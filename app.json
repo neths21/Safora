@@ -16,10 +16,10 @@
     },
     "android": {
       "adaptiveIcon": {
-        "backgroundColor": "#E6F4FE",
         "foregroundImage": "./assets/android-icon-foreground.png",
         "backgroundImage": "./assets/android-icon-background.png",
-        "monochromeImage": "./assets/android-icon-monochrome.png"
+        "monochromeImage": "./assets/android-icon-monochrome.png",
+        "backgroundColor": "#E6F4FE"
       },
       "permissions": [
         "ACCESS_FINE_LOCATION",
@@ -27,7 +27,8 @@
         "ACCESS_BACKGROUND_LOCATION",
         "android.permission.ACCESS_COARSE_LOCATION",
         "android.permission.ACCESS_FINE_LOCATION"
-      ]
+      ],
+      "package": "com.riduvarshinisb.Safora"
     },
     "web": {
       "favicon": "./assets/favicon.png"
@@ -44,7 +45,7 @@
     ],
     "extra": {
       "eas": {
-        "projectId": "46167e21-affc-4737-8387-566e63e8e478"
+        "projectId": "a834116d-6c75-43b7-9c14-e3e22bfccf08"
       }
     }
   }
