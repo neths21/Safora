@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import {
   View, Text, TouchableOpacity, StyleSheet,
-  SafeAreaView, Platform, Alert, Animated,
+  SafeAreaView, Platform, Alert, Animated, ScrollView,
 } from 'react-native';
 import { startRide, stopRide } from '../services/rideService';
 import RideMapView from './RideMapView';
@@ -15,7 +15,6 @@ export default function RideScreen({ navigation, route }) {
   const [destinationCoords, setDestinationCoords] = useState(null);
   const pulseAnim = useRef(new Animated.Value(1)).current;
 
-  // ── Pulse animation ──────────────────────────────────────
   useEffect(() => {
     const pulse = Animated.loop(
       Animated.sequence([
@@ -27,13 +26,11 @@ export default function RideScreen({ navigation, route }) {
     return () => pulse.stop();
   }, []);
 
-  // ── Timer ────────────────────────────────────────────────
   useEffect(() => {
     const interval = setInterval(() => setElapsedTime((p) => p + 1), 1000);
     return () => clearInterval(interval);
   }, []);
 
-  // ── Start ride on mount ──────────────────────────────────
   useEffect(() => {
     handleStartRide();
     convertAddresses();
@@ -50,7 +47,6 @@ export default function RideScreen({ navigation, route }) {
     }
   };
 
-  // ── Convert addresses to coordinates for map ─────────────
   const convertAddresses = async () => {
     try {
       const pickupC = await geocodeAddress(pickup);
@@ -76,10 +72,7 @@ export default function RideScreen({ navigation, route }) {
             console.error('Error stopping ride:', error.message);
           }
           navigation.navigate('Completion', {
-            pickup,
-            destination,
-            vehicleNumber,
-            userId,
+            pickup, destination, vehicleNumber, userId,
             duration: formatTime(elapsedTime),
           });
         },
@@ -95,7 +88,7 @@ export default function RideScreen({ navigation, route }) {
 
   return (
     <SafeAreaView style={styles.safe}>
-      <View style={styles.container}>
+      <ScrollView contentContainerStyle={styles.container} showsVerticalScrollIndicator={false}>
 
         <View style={styles.header}>
           <View style={styles.statusRow}>
@@ -108,7 +101,6 @@ export default function RideScreen({ navigation, route }) {
           <Text style={styles.headerDate}>{startDate}</Text>
         </View>
 
-        {/* Map View — from Person 2 */}
         {pickupCoords && destinationCoords && (
           <View style={styles.mapContainer}>
             <RideMapView pickup={pickupCoords} destination={destinationCoords} />
@@ -177,14 +169,14 @@ export default function RideScreen({ navigation, route }) {
           <Text style={styles.endBtnText}>✓  End Ride Safely</Text>
         </TouchableOpacity>
 
-      </View>
+      </ScrollView>
     </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: '#f9f0f5' },
-  container: { flex: 1, paddingHorizontal: 22, paddingTop: Platform.OS === 'android' ? 48 : 20, paddingBottom: 30 },
+  container: { paddingHorizontal: 22, paddingTop: Platform.OS === 'android' ? 48 : 20, paddingBottom: 30 },
   header: { marginBottom: 12 },
   statusRow: { flexDirection: 'row', alignItems: 'center', marginBottom: 6 },
   statusDot: { width: 9, height: 9, borderRadius: 5, marginRight: 8 },
@@ -204,7 +196,7 @@ const styles = StyleSheet.create({
   timerValue: { color: '#fff', fontSize: 52, fontWeight: '800', letterSpacing: 2 },
   timerSub: { color: '#f8c0dc', fontSize: 12, marginTop: 4 },
   detailsCard: {
-    backgroundColor: '#fff', borderRadius: 18, padding: 18, marginBottom: 16, flex: 1,
+    backgroundColor: '#fff', borderRadius: 18, padding: 18, marginBottom: 16,
     shadowColor: '#c0136e', shadowOpacity: 0.06, shadowRadius: 12,
     shadowOffset: { width: 0, height: 4 }, elevation: 3,
   },
