@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import {
   View, Text, TouchableOpacity, StyleSheet,
-  SafeAreaView, Platform, Animated, Alert,
+  SafeAreaView, Platform, Animated, Alert, ScrollView,
 } from 'react-native';
 import { shareRideComplete } from '../services/shareService';
 import { getRecordings } from '../services/audioService';
@@ -60,7 +60,10 @@ export default function CompletionScreen({ navigation, route }) {
 
   return (
     <SafeAreaView style={styles.safe}>
-      <View style={styles.container}>
+      <ScrollView
+        contentContainerStyle={styles.container}
+        showsVerticalScrollIndicator={false}
+      >
 
         <Animated.View style={[styles.checkCircle, { transform: [{ scale: scaleAnim }] }]}>
           <Text style={styles.checkIcon}>✓</Text>
@@ -99,7 +102,6 @@ export default function CompletionScreen({ navigation, route }) {
           )}
         </View>
 
-        {/* Emergency recordings section */}
         {recordings.length > 0 && (
           <View style={styles.recordingsCard}>
             <Text style={styles.recordingsTitle}>🎙 Emergency Recordings</Text>
@@ -137,7 +139,7 @@ export default function CompletionScreen({ navigation, route }) {
           <Text style={styles.homeBtnText}>← Back to Home</Text>
         </TouchableOpacity>
 
-      </View>
+      </ScrollView>
     </SafeAreaView>
   );
 }
@@ -145,7 +147,7 @@ export default function CompletionScreen({ navigation, route }) {
 const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: '#f0faf4' },
   container: {
-    flex: 1, paddingHorizontal: 22,
+    paddingHorizontal: 22,
     paddingTop: Platform.OS === 'android' ? 60 : 40,
     paddingBottom: 30,
   },

@@ -199,9 +199,9 @@ export default function FakeCallModal({ visible, onAnswer, onDecline }) {
             <>
               <Text style={styles.callLabel}>On a call</Text>
               <View style={styles.avatarCircle}>
-                <Text style={styles.avatarIcon}>👩</Text>
+                <Text style={styles.avatarIcon}>👨</Text>
               </View>
-              <Text style={styles.callerName}>Mom</Text>
+              <Text style={styles.callerName}>Dad</Text>
               <Text style={styles.callTimer}>{formatDuration(callDuration)}</Text>
 
               <View style={styles.promptBanner}>
