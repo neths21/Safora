@@ -43,5 +43,3 @@ yarn-error.*
 .env
 
 /assets
-
-/firebaseConfig.js
