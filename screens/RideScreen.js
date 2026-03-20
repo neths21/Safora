@@ -22,7 +22,6 @@ export default function RideScreen({ navigation, route }) {
   const [currentLocation, setCurrentLocation] = useState(null);
   const pulseAnim = useRef(new Animated.Value(1)).current;
 
-  // ── Pulse animation ──────────────────────────────────────
   useEffect(() => {
     const pulse = Animated.loop(
       Animated.sequence([
@@ -34,18 +33,15 @@ export default function RideScreen({ navigation, route }) {
     return () => pulse.stop();
   }, []);
 
-  // ── Timer ────────────────────────────────────────────────
   useEffect(() => {
     const interval = setInterval(() => setElapsedTime((p) => p + 1), 1000);
     return () => clearInterval(interval);
   }, []);
 
-  // ── Start ride on mount ──────────────────────────────────
   useEffect(() => {
     handleStartRide();
   }, []);
 
-  // ── Convert addresses + fetch route ─────────────────────
   useEffect(() => {
     const convertAddresses = async () => {
       try {
@@ -62,7 +58,6 @@ export default function RideScreen({ navigation, route }) {
     convertAddresses();
   }, []);
 
-  // ── Deviation detection every 4 seconds ─────────────────
   useEffect(() => {
     if (!routeLine || routeLine.length === 0) return;
     const interval = setInterval(async () => {
@@ -94,7 +89,6 @@ export default function RideScreen({ navigation, route }) {
     return () => clearInterval(interval);
   }, [routeLine]);
 
-  // ── Voice trigger ────────────────────────────────────────
   useVoiceTrigger(
     (transcript) => {
       console.log('SOS triggered by voice:', transcript);
@@ -159,7 +153,6 @@ export default function RideScreen({ navigation, route }) {
           <Text style={styles.headerDate}>{startDate}</Text>
         </View>
 
-        {/* Voice trigger indicator — only shows when ride is active */}
         {rideStarted && (
           <View style={styles.voiceIndicator}>
             <Text style={styles.voiceDot}>🎤</Text>

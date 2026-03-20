@@ -59,7 +59,6 @@ export default function EmergencyScreen({ navigation, route }) {
               const uri = await resolveEmergency(userId || 'defaultUser');
               if (uri) {
                 setRecordingUri(uri);
-                // Ask if they want to share immediately
                 Alert.alert(
                   'Recording Saved',
                   'Emergency audio has been saved to your device. Share it now?',
