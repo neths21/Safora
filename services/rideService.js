@@ -1,6 +1,7 @@
 // services/rideService.js
 import { getCurrentLocation } from './locationService';
 
+
 import {
   saveRide,
   endRide,
@@ -15,7 +16,7 @@ let locationInterval = null;
 
 // Call this when user taps Start Ride
 // Person 1 calls this from RideScreen.js
-export const startRide = async (userId, destination, getCurrentLocation) => {
+export const startRide = async (userId, destination) => {
   try {
     // Save ride to Firebase and get back the ride ID
     const rideId = await saveRide(userId, destination);
