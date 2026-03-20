@@ -3,6 +3,10 @@ import {
   View, Text, TextInput, TouchableOpacity,
   StyleSheet, ScrollView, Alert, SafeAreaView, Platform,
 } from 'react-native';
+
+import { Ionicons } from '@expo/vector-icons';
+import * as Location from "expo-location";
+
 import { shareRideStarted } from '../services/shareService';
 import { saveTrustedContact, getTrustedContacts } from '../services/firebaseService';
 
@@ -17,6 +21,7 @@ export default function HomeScreen({ navigation }) {
   const [contactPhone, setContactPhone] = useState('');
   const [contacts, setContacts] = useState([]);
   const [showAddContact, setShowAddContact] = useState(false);
+  const [loadingLocation, setLoadingLocation] = useState(false);
 
   useEffect(() => {
     loadContacts();
@@ -28,6 +33,36 @@ export default function HomeScreen({ navigation }) {
       setContacts(list);
     } catch (error) {
       console.error('Error loading contacts:', error.message);
+    }
+  };
+
+  const fetchCurrentLocation = async () => {
+    try {
+      setLoadingLocation(true);
+
+      const { status } = await Location.requestForegroundPermissionsAsync();
+
+      if (status !== "granted") {
+        console.log("Permission denied");
+        setLoadingLocation(false);
+        return;
+      }
+
+      const loc = await Location.getCurrentPositionAsync({});
+      const { latitude, longitude } = loc.coords;
+
+      const address = await Location.reverseGeocodeAsync({ latitude, longitude });
+
+      if (address.length > 0) {
+        const place = address[0];
+        const formatted = `${place.name || ""} ${place.street || ""}, ${place.city || ""}`;
+        setPickup(formatted.trim());
+      }
+
+      setLoadingLocation(false);
+    } catch (error) {
+      console.log("Location fetch failed:", error);
+      setLoadingLocation(false);
     }
   };
 
@@ -63,11 +98,9 @@ export default function HomeScreen({ navigation }) {
     }
 
     try {
-      // Notify trusted contacts that ride has started
       await shareRideStarted(USER_ID, destination.trim());
     } catch (error) {
       console.error('Error sharing ride start:', error.message);
-      // Don't block ride start if SMS fails
     }
 
     navigation.navigate('Ride', {
@@ -142,16 +175,35 @@ export default function HomeScreen({ navigation }) {
         <View style={[styles.card, { marginTop: 16 }]}>
           <Text style={styles.cardTitle}>Start a Safe Ride</Text>
 
-          <Text style={styles.label}>📍  Pickup Location</Text>
+          {/* Pickup */}
+          <Text style={styles.label}>📍 Pickup Location</Text>
           <TextInput
             style={styles.input}
-            placeholder="Enter your pickup location"
+            placeholder={loadingLocation ? "Fetching current location..." : "Enter your pickup location"}
             placeholderTextColor="#bbb"
             value={pickup}
             onChangeText={setPickup}
           />
 
-          <Text style={styles.label}>🏁  Destination</Text>
+          {/* ✅ IMPROVED: Live Location Button */}
+          <TouchableOpacity
+            onPress={fetchCurrentLocation}
+            style={[styles.locationBtn, loadingLocation && styles.locationBtnLoading]}
+            activeOpacity={0.75}
+            disabled={loadingLocation}
+          >
+            <Ionicons
+              name={loadingLocation ? "sync" : "location-sharp"}
+              size={15}
+              color={loadingLocation ? "#c880a8" : "#e91e8c"}
+            />
+            <Text style={[styles.locationBtnText, loadingLocation && styles.locationBtnTextLoading]}>
+              {loadingLocation ? "Fetching location..." : "Use current location"}
+            </Text>
+          </TouchableOpacity>
+
+          {/* Destination */}
+          <Text style={styles.label}>🏁 Destination</Text>
           <TextInput
             style={styles.input}
             placeholder="Enter your destination"
@@ -162,7 +214,8 @@ export default function HomeScreen({ navigation }) {
 
           <View style={styles.divider} />
 
-          <Text style={styles.label}>🚗  Vehicle Number</Text>
+          {/* Vehicle */}
+          <Text style={styles.label}>🚗 Vehicle Number</Text>
           <TextInput
             style={[styles.input, styles.vehicleInput]}
             placeholder="e.g. TN 01 AB 1234"
@@ -173,7 +226,7 @@ export default function HomeScreen({ navigation }) {
           />
 
           <TouchableOpacity style={styles.startBtn} onPress={handleStartRide} activeOpacity={0.85}>
-            <Text style={styles.startBtnText}>🚀  Start Ride</Text>
+            <Text style={styles.startBtnText}>🚀 Start Ride</Text>
           </TouchableOpacity>
         </View>
 
@@ -245,4 +298,32 @@ const styles = StyleSheet.create({
   },
   safetyIcon: { fontSize: 20, marginRight: 10 },
   safetyText: { flex: 1, fontSize: 12.5, color: '#a06080', lineHeight: 18 },
+
+  // ✅ NEW: Location button styles
+  locationBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 7,
+    alignSelf: 'flex-start',
+    backgroundColor: '#fef0f7',
+    borderWidth: 1.5,
+    borderColor: '#e91e8c',
+    borderRadius: 24,
+    paddingVertical: 8,
+    paddingHorizontal: 16,
+    marginBottom: 14,
+  },
+  locationBtnLoading: {
+    borderColor: '#e8b4d0',
+    backgroundColor: '#fdf5f9',
+  },
+  locationBtnText: {
+    color: '#c0136e',
+    fontSize: 14,
+    fontWeight: '600',
+    letterSpacing: 0.1,
+  },
+  locationBtnTextLoading: {
+    color: '#c880a8',
+  },
 });

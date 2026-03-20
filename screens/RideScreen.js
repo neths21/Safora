@@ -4,13 +4,18 @@ import {
   Text,
   TouchableOpacity,
   StyleSheet,
-  SafeAreaView,
   Alert,
 } from "react-native";
+
+import { SafeAreaView } from "react-native-safe-area-context";
 
 import { startRide, stopRide } from "../services/rideService";
 import RideMapView from "./RideMapView";
 import { geocodeAddress } from "../services/geocodingService";
+
+import { fetchRoute } from "../services/routeService";
+import { detectDeviation } from "../services/deviationService";
+import { getCurrentLocation } from "../services/locationService";
 
 export default function RideScreen({ navigation, route }) {
   const { pickup, destination, vehicleNumber, startTime, startDate, userId } =
@@ -21,6 +26,11 @@ export default function RideScreen({ navigation, route }) {
 
   const [pickupCoords, setPickupCoords] = useState(null);
   const [destinationCoords, setDestinationCoords] = useState(null);
+
+  const [routeLine, setRouteLine] = useState([]);
+
+  // 🔥 THIS WAS MISSING (root cause of your error)
+  const [currentLocation, setCurrentLocation] = useState(null);
 
   // ⏱ Timer
   useEffect(() => {
@@ -45,7 +55,7 @@ export default function RideScreen({ navigation, route }) {
     }
   };
 
-  // 📍 Convert addresses → coordinates
+  // 📍 Convert addresses → coordinates + route
   useEffect(() => {
     const convertAddresses = async () => {
       try {
@@ -54,13 +64,49 @@ export default function RideScreen({ navigation, route }) {
 
         setPickupCoords(pickupC);
         setDestinationCoords(destC);
+
+        const route = await fetchRoute(pickupC, destC);
+        setRouteLine(route);
+
       } catch (e) {
+        console.log(e);
         Alert.alert("Error", "Could not find location");
       }
     };
 
     convertAddresses();
   }, []);
+
+  // 🚨 Deviation + live tracking
+  useEffect(() => {
+    if (!routeLine || routeLine.length === 0) return;
+
+    const interval = setInterval(async () => {
+      try {
+        const location = await getCurrentLocation();
+
+        // ✅ FIXED — now state exists
+        setCurrentLocation(location);
+
+        const result = await detectDeviation(
+          userId,
+          location,
+          routeLine
+        );
+
+        console.log("Deviation:", result);
+
+        if (result.deviated) {
+          Alert.alert("⚠️ Off Route", "You are deviating!");
+        }
+
+      } catch (error) {
+        console.log("Deviation error:", error);
+      }
+    }, 4000);
+
+    return () => clearInterval(interval);
+  }, [routeLine]);
 
   const handleEndRide = () => {
     Alert.alert("End Ride", "Are you sure?", [
@@ -112,6 +158,8 @@ export default function RideScreen({ navigation, route }) {
             <RideMapView
               pickup={pickupCoords}
               destination={destinationCoords}
+              routeLine={routeLine}
+              currentLocation={currentLocation}
             />
           ) : (
             <Text>Loading map...</Text>
@@ -124,22 +172,8 @@ export default function RideScreen({ navigation, route }) {
           <Text style={styles.started}>Started at {startTime}</Text>
         </View>
 
-        <View style={styles.card}>
-          <Text style={styles.cardTitle}>Ride Details</Text>
-
-          <Text style={styles.label}>📍 Pickup</Text>
-          <Text style={styles.value}>{pickup}</Text>
-
-          <Text style={styles.label}>🏁 Destination</Text>
-          <Text style={styles.value}>{destination}</Text>
-
-          <Text style={styles.label}>🚘 Vehicle</Text>
-          <Text style={styles.vehicle}>{vehicleNumber}</Text>
-        </View>
-
         <TouchableOpacity style={styles.sosBtn} onPress={handleSOS}>
           <Text style={styles.sosText}>🚨 SOS EMERGENCY</Text>
-          <Text style={styles.sosSub}>Tap for immediate help</Text>
         </TouchableOpacity>
 
         <TouchableOpacity style={styles.endBtn} onPress={handleEndRide}>
@@ -150,6 +184,7 @@ export default function RideScreen({ navigation, route }) {
     </SafeAreaView>
   );
 }
+
 const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: "#f8f0f5" },
   container: { flex: 1, padding: 16 },
@@ -172,21 +207,10 @@ const styles = StyleSheet.create({
     alignItems: "center",
     marginBottom: 12,
   },
+
   durationLabel: { color: "#fff", fontSize: 12 },
   duration: { color: "#fff", fontSize: 32, fontWeight: "bold" },
   started: { color: "#fff", fontSize: 12 },
-
-  card: {
-    backgroundColor: "#fff",
-    padding: 16,
-    borderRadius: 15,
-    marginBottom: 12,
-  },
-  cardTitle: { fontWeight: "700", marginBottom: 8 },
-
-  label: { color: "#888", marginTop: 6 },
-  value: { fontSize: 14 },
-  vehicle: { fontWeight: "bold", color: "#d81b60" },
 
   sosBtn: {
     backgroundColor: "#e53935",
@@ -195,8 +219,8 @@ const styles = StyleSheet.create({
     alignItems: "center",
     marginBottom: 10,
   },
-  sosText: { color: "#fff", fontWeight: "bold", fontSize: 16 },
-  sosSub: { color: "#fff", fontSize: 12 },
+
+  sosText: { color: "#fff", fontWeight: "bold" },
 
   endBtn: {
     borderWidth: 2,
@@ -205,5 +229,6 @@ const styles = StyleSheet.create({
     borderRadius: 15,
     alignItems: "center",
   },
+
   endText: { color: "#d81b60", fontWeight: "bold" },
 });

@@ -2,7 +2,7 @@ import React from "react";
 import { StyleSheet, View, Text, ActivityIndicator } from "react-native";
 import { WebView } from "react-native-webview";
 
-const RideMapView = ({ pickup, destination }) => {
+const RideMapView = ({ pickup, destination, routeLine, currentLocation }) => {
   if (!pickup || !destination) {
     return (
       <View style={styles.center}>
@@ -11,6 +11,22 @@ const RideMapView = ({ pickup, destination }) => {
       </View>
     );
   }
+
+  // ✅ Convert routeLine → Leaflet format
+  const routeCoords = routeLine
+    ? routeLine.map(p => `[${p.latitude}, ${p.longitude}]`).join(",")
+    : "";
+
+  const userMarker = currentLocation
+    ? `
+      var userMarker = L.marker([${currentLocation.latitude}, ${currentLocation.longitude}], {
+        icon: L.icon({
+          iconUrl: 'https://cdn-icons-png.flaticon.com/512/64/64113.png',
+          iconSize: [30, 30]
+        })
+      }).addTo(map).bindPopup("You");
+    `
+    : "";
 
   const mapHTML = `
   <!DOCTYPE html>
@@ -34,26 +50,31 @@ const RideMapView = ({ pickup, destination }) => {
         attribution: '© OpenStreetMap'
       }).addTo(map);
 
-      // Pickup
+      // Pickup marker
       L.marker([${pickup.latitude}, ${pickup.longitude}])
         .addTo(map)
         .bindPopup("Pickup");
 
-      // Destination
+      // Destination marker
       L.marker([${destination.latitude}, ${destination.longitude}])
         .addTo(map)
         .bindPopup("Destination");
 
-      // Line between them
-      var latlngs = [
-        [${pickup.latitude}, ${pickup.longitude}],
-        [${destination.latitude}, ${destination.longitude}]
-      ];
+      // ✅ REAL ROUTE
+      var route = [${routeCoords}];
+      if (route.length > 0) {
+        var polyline = L.polyline(route, {
+          color: '#d81b60',
+          weight: 5
+        }).addTo(map);
 
-      L.polyline(latlngs, { color: '#d81b60', weight: 4 }).addTo(map);
+        map.fitBounds(polyline.getBounds());
+      }
+
+      // ✅ USER MARKER
+      ${userMarker}
 
     </script>
-
   </body>
   </html>
   `;
