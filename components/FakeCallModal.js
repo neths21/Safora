@@ -228,7 +228,7 @@ export default function FakeCallModal({ visible, onAnswer, onDecline }) {
               <TouchableOpacity style={styles.endCallBtn} onPress={handleEndCall} activeOpacity={0.85}>
                 <Text style={styles.btnIcon}>📵</Text>
               </TouchableOpacity>
-              <Text style={[styles.btnLabel, { marginTop: 6, color: '#aaa' }]}>End Call</Text>
+              <Text style={[styles.btnLabel, { marginTop: 6, color: '#302f2f9a' }]}>End Call</Text>
             </>
           )}
 
@@ -240,21 +240,21 @@ export default function FakeCallModal({ visible, onAnswer, onDecline }) {
 
 const styles = StyleSheet.create({
   overlay: {
-    flex: 1, backgroundColor: 'rgba(0,0,0,0.85)',
+    flex: 1, backgroundColor: 'rgba(40, 38, 38, 0.85)',
     justifyContent: 'center', alignItems: 'center',
   },
   modal: {
-    backgroundColor: '#1a1a2e', borderRadius: 28,
+    backgroundColor: '#ffcced', borderRadius: 28,
     padding: 36, width: '85%', alignItems: 'center',
   },
-  callLabel: { color: '#aaa', fontSize: 14, marginBottom: 12 },
+  callLabel: { color: '#302f2f9a', fontSize: 14, marginBottom: 12 },
   langRow: { flexDirection: 'row', gap: 10, marginBottom: 16 },
   langBtn: {
     paddingHorizontal: 16, paddingVertical: 7, borderRadius: 20,
     borderWidth: 1, borderColor: '#444',
   },
   langBtnActive: { backgroundColor: '#e91e8c', borderColor: '#e91e8c' },
-  langBtnText: { color: '#aaa', fontSize: 13, fontWeight: '600' },
+  langBtnText: { color: '#302f2f9a', fontSize: 13, fontWeight: '600' },
   langBtnTextActive: { color: '#fff' },
   avatarCircle: {
     width: 90, height: 90, borderRadius: 45,
@@ -262,14 +262,14 @@ const styles = StyleSheet.create({
     alignItems: 'center', marginBottom: 16,
   },
   avatarIcon: { fontSize: 44 },
-  callerName: { color: '#fff', fontSize: 26, fontWeight: '700', marginBottom: 4 },
-  callerSub: { color: '#aaa', fontSize: 13, marginBottom: 36 },
+  callerName: { color: '#302f2f9a', fontSize: 26, fontWeight: '700', marginBottom: 4 },
+  callerSub: { color: '#302f2f9a', fontSize: 13, marginBottom: 36 },
   callTimer: { color: '#4caf50', fontSize: 16, fontWeight: '600', marginBottom: 16 },
   promptBanner: {
     backgroundColor: '#1e3a2f', borderRadius: 10, padding: 10,
     marginBottom: 24, borderWidth: 1, borderColor: '#2e7d32',
   },
-  promptText: { color: '#81c784', fontSize: 12, fontWeight: '600', textAlign: 'center' },
+  promptText: { color: '#89d58d', fontSize: 12, fontWeight: '600', textAlign: 'center' },
   btnRow: { flexDirection: 'row', gap: 40 },
   activeCallBtns: { flexDirection: 'row', gap: 40, marginBottom: 30 },
   btnCol: { alignItems: 'center' },
@@ -286,7 +286,7 @@ const styles = StyleSheet.create({
     borderRadius: 28, justifyContent: 'center', alignItems: 'center',
   },
   speakerBtn: {
-    backgroundColor: '#37474f', width: 56, height: 56,
+    backgroundColor: '#4f374b', width: 56, height: 56,
     borderRadius: 28, justifyContent: 'center', alignItems: 'center',
   },
   endCallBtn: {
@@ -294,5 +294,5 @@ const styles = StyleSheet.create({
     borderRadius: 32, justifyContent: 'center', alignItems: 'center',
   },
   btnIcon: { fontSize: 26 },
-  btnLabel: { color: '#aaa', fontSize: 11, marginTop: 6, fontWeight: '600' },
+  btnLabel: { color: '#302f2f9a', fontSize: 11, marginTop: 6, fontWeight: '600' },
 });

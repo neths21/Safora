@@ -307,9 +307,9 @@ const styles = StyleSheet.create({
   },
   endBtnText: { color: '#e91e8c', fontSize: 16, fontWeight: '700' },
   fakeCallBtn: {
-  backgroundColor: '#e3f2fd', borderRadius: 14, paddingVertical: 14,
-  alignItems: 'center', borderWidth: 1.5, borderColor: '#1565c0',
+  backgroundColor: '#f9dfe9', borderRadius: 14, paddingVertical: 14,
+  alignItems: 'center', borderWidth: 1.5, borderColor: '#d80a9b',
   marginBottom: 14,
 },
-fakeCallBtnText: { color: '#1565c0', fontSize: 15, fontWeight: '700' },
+fakeCallBtnText: { color: '#da39a2', fontSize: 15, fontWeight: '700' },
 });
