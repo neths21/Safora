@@ -1,20 +1,15 @@
-// services/voiceService.js
-
 import {
   ExpoSpeechRecognitionModule,
   useSpeechRecognitionEvent,
 } from 'expo-speech-recognition';
 
-const TRIGGER_WORDS = ['help', 'sos', 'emergency', 'police'];
+const TRIGGER_WORDS = ['help', 'sos', 'emergency', 'police', 'bachao'];
 
 let isListening = false;
 let onTriggerCallback = null;
 
-// ─── START LISTENING ──────────────────────────────────────
-
 export const startVoiceDetection = async (onTrigger) => {
   try {
-    // Request permission
     const { granted } = await ExpoSpeechRecognitionModule.requestPermissionsAsync();
     if (!granted) {
       console.log('Speech recognition permission denied');
@@ -25,20 +20,33 @@ export const startVoiceDetection = async (onTrigger) => {
     isListening = true;
 
     await ExpoSpeechRecognitionModule.start({
-      lang: 'en-IN', // Indian English
-      continuous: true, // keep listening
-      interimResults: true, // get results as user speaks
+      lang: 'en-IN',
+      continuous: true,
+      interimResults: true,
+      requiresOnDeviceRecognition: true, // ← offline mode
+      addsPunctuation: false,
     });
 
     console.log('Voice detection started');
     return true;
   } catch (error) {
-    console.error('Error starting voice detection:', error);
-    return false;
+    // If offline not available, fall back to online
+    console.log('Offline not available, trying online...');
+    try {
+      await ExpoSpeechRecognitionModule.start({
+        lang: 'en-IN',
+        continuous: true,
+        interimResults: true,
+        requiresOnDeviceRecognition: false,
+        addsPunctuation: false,
+      });
+      return true;
+    } catch (fallbackError) {
+      console.error('Voice detection failed:', fallbackError);
+      return false;
+    }
   }
 };
-
-// ─── STOP LISTENING ───────────────────────────────────────
 
 export const stopVoiceDetection = async () => {
   try {
@@ -51,8 +59,6 @@ export const stopVoiceDetection = async () => {
   }
 };
 
-// ─── CHECK TRANSCRIPT FOR TRIGGER WORDS ──────────────────
-
 export const checkTranscript = (transcript) => {
   if (!transcript || !isListening) return false;
   const lower = transcript.toLowerCase();
@@ -63,7 +69,5 @@ export const checkTranscript = (transcript) => {
   }
   return triggered;
 };
-
-// ─── HELPERS ──────────────────────────────────────────────
 
 export const isVoiceDetectionActive = () => isListening;
