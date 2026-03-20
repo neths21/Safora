@@ -3,17 +3,19 @@ import {
   View, Text, TouchableOpacity, StyleSheet,
   SafeAreaView, Platform, Animated, Linking, Alert, ScrollView,
 } from 'react-native';
-import { triggerSOS, resolveEmergency, isEmergencyActive } from '../services/emergencyService';
+import { triggerSOS, resolveEmergency } from '../services/emergencyService';
 import { isRecording } from '../services/audioService';
 import * as Location from 'expo-location';
-import SafetyTipsModal from '../components/SafetyTipsModal'; // ← added
+import * as Sharing from 'expo-sharing';
+import SafetyTipsModal from '../components/SafetyTipsModal';
 
 export default function EmergencyScreen({ navigation, route }) {
   const { vehicleNumber, pickup, destination, userId } = route.params || {};
   const alertAnim = useRef(new Animated.Value(0)).current;
   const [recording, setRecording] = useState(false);
   const [sosTriggered, setSosTriggered] = useState(false);
-  const [showSafetyTips, setShowSafetyTips] = useState(false); // ← added
+  const [showSafetyTips, setShowSafetyTips] = useState(false);
+  const [recordingUri, setRecordingUri] = useState(null);
 
   useEffect(() => {
     Animated.timing(alertAnim, {
@@ -35,12 +37,12 @@ export default function EmergencyScreen({ navigation, route }) {
       const { latitude, longitude } = location.coords;
       await triggerSOS(userId || 'defaultUser', latitude, longitude);
       setSosTriggered(true);
-      setShowSafetyTips(true); // ← added
+      setShowSafetyTips(true);
       console.log('SOS triggered from EmergencyScreen');
     } catch (error) {
       console.error('Error triggering SOS:', error.message);
       setSosTriggered(true);
-      setShowSafetyTips(true); // ← added
+      setShowSafetyTips(true);
     }
   };
 
@@ -54,12 +56,38 @@ export default function EmergencyScreen({ navigation, route }) {
           text: 'Yes, I am safe',
           onPress: async () => {
             try {
-              await resolveEmergency(userId || 'defaultUser');
-              console.log('Emergency resolved');
+              const uri = await resolveEmergency(userId || 'defaultUser');
+              if (uri) {
+                setRecordingUri(uri);
+                // Ask if they want to share immediately
+                Alert.alert(
+                  'Recording Saved',
+                  'Emergency audio has been saved to your device. Share it now?',
+                  [
+                    {
+                      text: 'Share Now',
+                      onPress: async () => {
+                        try {
+                          await Sharing.shareAsync(uri);
+                        } catch (e) {
+                          console.error('Error sharing:', e.message);
+                        }
+                        navigation.goBack();
+                      },
+                    },
+                    {
+                      text: 'Later',
+                      onPress: () => navigation.goBack(),
+                    },
+                  ]
+                );
+              } else {
+                navigation.goBack();
+              }
             } catch (error) {
               console.error('Error resolving emergency:', error.message);
+              navigation.goBack();
             }
-            navigation.goBack();
           },
         },
       ]
@@ -175,7 +203,6 @@ export default function EmergencyScreen({ navigation, route }) {
 
       </ScrollView>
 
-      {/* Safety Tips Modal — auto shows on SOS trigger */}
       <SafetyTipsModal
         visible={showSafetyTips}
         onClose={() => setShowSafetyTips(false)}

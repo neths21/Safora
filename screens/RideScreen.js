@@ -10,6 +10,7 @@ import { geocodeAddress } from '../services/geocodingService';
 import { fetchRoute } from '../services/routeService';
 import { detectDeviation } from '../services/deviationService';
 import { getCurrentLocation } from '../services/locationService';
+import { useVoiceTrigger } from '../hooks/useVoiceTrigger';
 
 export default function RideScreen({ navigation, route }) {
   const { pickup, destination, vehicleNumber, startTime, startDate, userId } = route.params;
@@ -64,7 +65,6 @@ export default function RideScreen({ navigation, route }) {
   // ── Deviation detection every 4 seconds ─────────────────
   useEffect(() => {
     if (!routeLine || routeLine.length === 0) return;
-
     const interval = setInterval(async () => {
       try {
         const location = await getCurrentLocation();
@@ -91,9 +91,19 @@ export default function RideScreen({ navigation, route }) {
         console.error('Deviation error:', error.message);
       }
     }, 4000);
-
     return () => clearInterval(interval);
   }, [routeLine]);
+
+  // ── Voice trigger ────────────────────────────────────────
+  useVoiceTrigger(
+    (transcript) => {
+      console.log('SOS triggered by voice:', transcript);
+      navigation.navigate('Emergency', {
+        vehicleNumber, pickup, destination, userId,
+      });
+    },
+    rideStarted
+  );
 
   const handleStartRide = async () => {
     try {
@@ -148,6 +158,14 @@ export default function RideScreen({ navigation, route }) {
           <Text style={styles.headerTitle}>🚗  Ride Tracker</Text>
           <Text style={styles.headerDate}>{startDate}</Text>
         </View>
+
+        {/* Voice trigger indicator — only shows when ride is active */}
+        {rideStarted && (
+          <View style={styles.voiceIndicator}>
+            <Text style={styles.voiceDot}>🎤</Text>
+            <Text style={styles.voiceText}>Listening for "Help" or "SOS"</Text>
+          </View>
+        )}
 
         {pickupCoords && destinationCoords && (
           <View style={styles.mapContainer}>
@@ -236,6 +254,14 @@ const styles = StyleSheet.create({
   statusText: { fontSize: 12, fontWeight: '700', textTransform: 'uppercase' },
   headerTitle: { fontSize: 26, fontWeight: '800', color: '#3a1a2e' },
   headerDate: { fontSize: 13, color: '#a06080', marginTop: 2 },
+  voiceIndicator: {
+    flexDirection: 'row', alignItems: 'center',
+    backgroundColor: '#f3e5f5', borderRadius: 10,
+    paddingHorizontal: 12, paddingVertical: 8,
+    marginBottom: 12, borderWidth: 1, borderColor: '#e1bee7',
+  },
+  voiceDot: { fontSize: 14, marginRight: 8 },
+  voiceText: { fontSize: 12, color: '#7b1fa2', fontWeight: '600' },
   mapContainer: { height: 180, borderRadius: 15, overflow: 'hidden', marginBottom: 12 },
   timerCard: {
     backgroundColor: '#c0136e', borderRadius: 18, paddingVertical: 22,
