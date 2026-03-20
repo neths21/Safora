@@ -1,20 +1,21 @@
-import { StatusBar } from 'expo-status-bar';
-import { StyleSheet, Text, View } from 'react-native';
+import { useEffect } from 'react';
+import * as Location from 'expo-location';
+import RideMapView from './screens/RideScreen';
 
 export default function App() {
+  useEffect(() => {
+    const requestBackgroundPermission = async () => {
+      const { status } = await Location.requestBackgroundPermissionsAsync();
+      if (status !== 'granted') {
+        console.warn('Background location permission denied.');
+      }
+    };
+    requestBackgroundPermission();
+  }, []);
+
   return (
-    <View style={styles.container}>
-      <Text>Open up App.js to start working on your app!</Text>
-      <StatusBar style="auto" />
-    </View>
+    <RideMapView
+      destination={{ latitude: 13.0827, longitude: 80.2707 }}
+    />
   );
 }
-
-const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: '#fff',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-});

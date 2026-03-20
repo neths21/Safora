@@ -1,50 +1,37 @@
 {
   "expo": {
     "name": "Safora",
-    "slug": "Safora",
-    "version": "1.0.0",
-    "orientation": "portrait",
-    "icon": "./assets/icon.png",
-    "userInterfaceStyle": "light",
-    "splash": {
-      "image": "./assets/splash-icon.png",
-      "resizeMode": "contain",
-      "backgroundColor": "#ffffff"
-    },
-    "ios": {
-      "supportsTablet": true
-    },
+    "slug": "safora",
+    "plugins": [
+      [
+        "expo-location",
+        {
+          "locationAlwaysAndWhenInUsePermission": "Safora needs your location to track your ride and keep you safe.",
+          "locationWhenInUsePermission": "Safora needs your location to track your ride and keep you safe.",
+          "locationAlwaysPermission": "Safora tracks your location in the background to detect route deviations."
+        }
+      ]
+    ],
     "android": {
-      "adaptiveIcon": {
-        "backgroundColor": "#E6F4FE",
-        "foregroundImage": "./assets/android-icon-foreground.png",
-        "backgroundImage": "./assets/android-icon-background.png",
-        "monochromeImage": "./assets/android-icon-monochrome.png"
-      },
       "permissions": [
         "ACCESS_FINE_LOCATION",
         "ACCESS_COARSE_LOCATION",
         "ACCESS_BACKGROUND_LOCATION",
         "android.permission.ACCESS_COARSE_LOCATION",
+        "android.permission.ACCESS_FINE_LOCATION",
+        "ACCESS_FINE_LOCATION",
+        "ACCESS_COARSE_LOCATION",
+        "ACCESS_BACKGROUND_LOCATION",
+        "android.permission.ACCESS_COARSE_LOCATION",
         "android.permission.ACCESS_FINE_LOCATION"
-      ]
+      ],
+      "package": "com.neths21.safora"
     },
-    "web": {
-      "favicon": "./assets/favicon.png"
-    },
-    "plugins": [
-      [
-        "expo-location",
-        {
-          "locationAlwaysAndWhenInUsePermission": "This app tracks your location",
-          "locationAlwaysPermission": "Needed for safety alerts",
-          "locationWhenInUsePermission": "Needed for ride tracking"
-        }
-      ]
-    ],
-    "extra": {
-      "eas": {
-        "projectId": "46167e21-affc-4737-8387-566e63e8e478"
+    "ios": {
+      "infoPlist": {
+        "NSLocationWhenInUseUsageDescription": "Safora needs your location to track your ride and keep you safe.",
+        "NSLocationAlwaysUsageDescription": "Safora tracks your location in the background to detect route deviations.",
+        "NSLocationAlwaysAndWhenInUseUsageDescription": "Safora needs location access at all times during an active ride."
       }
     }
   }
