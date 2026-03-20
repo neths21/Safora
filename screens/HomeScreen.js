@@ -3,12 +3,10 @@ import {
   View, Text, TextInput, TouchableOpacity,
   StyleSheet, ScrollView, Alert, SafeAreaView, Platform,
 } from 'react-native';
-
 import { Ionicons } from '@expo/vector-icons';
-import * as Location from "expo-location";
-
 import { shareRideStarted } from '../services/shareService';
 import { saveTrustedContact, getTrustedContacts } from '../services/firebaseService';
+import { getCurrentLocation } from '../services/locationService';
 
 // Hardcoded userId for now — will be replaced with real auth later
 const USER_ID = 'testUser123';
@@ -36,32 +34,14 @@ export default function HomeScreen({ navigation }) {
     }
   };
 
-  const fetchCurrentLocation = async () => {
+  const handleUseCurrentLocation = async () => {
     try {
       setLoadingLocation(true);
-
-      const { status } = await Location.requestForegroundPermissionsAsync();
-
-      if (status !== "granted") {
-        console.log("Permission denied");
-        setLoadingLocation(false);
-        return;
-      }
-
-      const loc = await Location.getCurrentPositionAsync({});
-      const { latitude, longitude } = loc.coords;
-
-      const address = await Location.reverseGeocodeAsync({ latitude, longitude });
-
-      if (address.length > 0) {
-        const place = address[0];
-        const formatted = `${place.name || ""} ${place.street || ""}, ${place.city || ""}`;
-        setPickup(formatted.trim());
-      }
-
-      setLoadingLocation(false);
-    } catch (error) {
-      console.log("Location fetch failed:", error);
+      const loc = await getCurrentLocation();
+      setPickup(`${loc.latitude}, ${loc.longitude}`);
+    } catch (err) {
+      Alert.alert("Error", "Could not fetch location");
+    } finally {
       setLoadingLocation(false);
     }
   };
@@ -175,19 +155,18 @@ export default function HomeScreen({ navigation }) {
         <View style={[styles.card, { marginTop: 16 }]}>
           <Text style={styles.cardTitle}>Start a Safe Ride</Text>
 
-          {/* Pickup */}
-          <Text style={styles.label}>📍 Pickup Location</Text>
+          <Text style={styles.label}>📍  Pickup Location</Text>
           <TextInput
             style={styles.input}
-            placeholder={loadingLocation ? "Fetching current location..." : "Enter your pickup location"}
+            placeholder="Enter your pickup location"
             placeholderTextColor="#bbb"
             value={pickup}
             onChangeText={setPickup}
           />
 
-          {/* ✅ IMPROVED: Live Location Button */}
+          {/* ✅ Pill-style location button */}
           <TouchableOpacity
-            onPress={fetchCurrentLocation}
+            onPress={handleUseCurrentLocation}
             style={[styles.locationBtn, loadingLocation && styles.locationBtnLoading]}
             activeOpacity={0.75}
             disabled={loadingLocation}
@@ -202,8 +181,7 @@ export default function HomeScreen({ navigation }) {
             </Text>
           </TouchableOpacity>
 
-          {/* Destination */}
-          <Text style={styles.label}>🏁 Destination</Text>
+          <Text style={styles.label}>🏁  Destination</Text>
           <TextInput
             style={styles.input}
             placeholder="Enter your destination"
@@ -214,8 +192,7 @@ export default function HomeScreen({ navigation }) {
 
           <View style={styles.divider} />
 
-          {/* Vehicle */}
-          <Text style={styles.label}>🚗 Vehicle Number</Text>
+          <Text style={styles.label}>🚗  Vehicle Number</Text>
           <TextInput
             style={[styles.input, styles.vehicleInput]}
             placeholder="e.g. TN 01 AB 1234"
@@ -226,7 +203,7 @@ export default function HomeScreen({ navigation }) {
           />
 
           <TouchableOpacity style={styles.startBtn} onPress={handleStartRide} activeOpacity={0.85}>
-            <Text style={styles.startBtnText}>🚀 Start Ride</Text>
+            <Text style={styles.startBtnText}>🚀  Start Ride</Text>
           </TouchableOpacity>
         </View>
 
@@ -299,7 +276,7 @@ const styles = StyleSheet.create({
   safetyIcon: { fontSize: 20, marginRight: 10 },
   safetyText: { flex: 1, fontSize: 12.5, color: '#a06080', lineHeight: 18 },
 
-  // ✅ NEW: Location button styles
+  // Location button
   locationBtn: {
     flexDirection: 'row',
     alignItems: 'center',

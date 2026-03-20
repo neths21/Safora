@@ -1,36 +1,28 @@
-
-/**
- * locationService.js
- * Handles GPS location tracking using expo-location.
- * Responsibilities:
- *   - Get one-time current location
- *   - Watch position continuously and sync to Firebase
- *   - Stop watching when ride ends
- */
-
 import * as Location from "expo-location";
-import { updateLiveLocation } from "./firebaseService"; // Teammate's function
+import { updateLiveLocation } from "./firebaseService";
+import { detectDeviation } from "./deviationService";
 
-// Holds the subscription object returned by watchPositionAsync
 let locationSubscription = null;
 
-/**
- * Requests foreground location permissions from the user.
- * Throws an error if permission is denied.
- */
+// 🔥 NEW: store route + user
+let currentRoute = [];
+let currentUserId = null;
+
+// 🔥 NEW: set route from RideScreen
+export const setRouteForTracking = (route, userId) => {
+  currentRoute = route;
+  currentUserId = userId;
+};
+
+// Permission
 const requestPermissions = async () => {
   const { status } = await Location.requestForegroundPermissionsAsync();
   if (status !== "granted") {
-    throw new Error("Location permission denied. Cannot track position.");
+    throw new Error("Location permission denied.");
   }
 };
 
-/**
- * getCurrentLocation
- * Returns the user's current GPS coordinates as a single snapshot.
- *
- * @returns {Promise<{ latitude: number, longitude: number }>}
- */
+// Get current location
 export const getCurrentLocation = async () => {
   await requestPermissions();
 
@@ -44,51 +36,48 @@ export const getCurrentLocation = async () => {
   };
 };
 
-/**
- * startWatchingLocation
- * Continuously watches the user's position every ~3-5 seconds.
- * On each update, calls updateLiveLocation to sync to Firebase.
- *
- * @param {string} userId - The ID of the current user
- */
+// 🔥 START TRACKING (UPDATED)
 export const startWatchingLocation = async (userId) => {
   await requestPermissions();
 
-  // Prevent duplicate subscriptions
   if (locationSubscription) {
-    console.warn("[LocationService] Already watching location. Skipping.");
+    console.warn("Already tracking location");
     return;
   }
 
   locationSubscription = await Location.watchPositionAsync(
     {
       accuracy: Location.Accuracy.High,
-      timeInterval: 3000,      // Update every 3 seconds
-      distanceInterval: 5,     // Or if moved at least 5 meters
+      timeInterval: 3000,
+      distanceInterval: 5,
     },
     async (location) => {
       const { latitude, longitude } = location.coords;
 
-      console.log(`[LocationService] Position update → lat: ${latitude}, lng: ${longitude}`);
+      console.log(`📍 Location: ${latitude}, ${longitude}`);
 
-      // Sync live location to Firebase (teammate's function)
+      // Firebase sync
       await updateLiveLocation(userId, latitude, longitude);
+
+      // 🔥 DEVIATION CHECK
+      if (currentRoute.length > 0 && currentUserId) {
+        await detectDeviation(
+          currentUserId,
+          { latitude, longitude },
+          currentRoute
+        );
+      }
     }
   );
 
-  console.log("[LocationService] Started watching location for user:", userId);
+  console.log("Started tracking 🚀");
 };
 
-/**
- * stopWatchingLocation
- * Removes the location watcher and cleans up the subscription.
- */
+// Stop tracking
 export const stopWatchingLocation = () => {
   if (locationSubscription) {
     locationSubscription.remove();
     locationSubscription = null;
-    console.log("[LocationService] Stopped watching location.");
-  } else {
-    console.warn("[LocationService] No active location subscription to stop.");
+    console.log("Stopped tracking");
   }
 };

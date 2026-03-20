@@ -12,21 +12,10 @@ const RideMapView = ({ pickup, destination, routeLine, currentLocation }) => {
     );
   }
 
-  // ✅ Convert routeLine → Leaflet format
-  const routeCoords = routeLine
-    ? routeLine.map(p => `[${p.latitude}, ${p.longitude}]`).join(",")
-    : "";
-
-  const userMarker = currentLocation
-    ? `
-      var userMarker = L.marker([${currentLocation.latitude}, ${currentLocation.longitude}], {
-        icon: L.icon({
-          iconUrl: 'https://cdn-icons-png.flaticon.com/512/64/64113.png',
-          iconSize: [30, 30]
-        })
-      }).addTo(map).bindPopup("You");
-    `
-    : "";
+  const routeCoordsJS = JSON.stringify(routeLine || []);
+  const currentLocJS = currentLocation
+    ? `[${currentLocation.latitude}, ${currentLocation.longitude}]`
+    : null;
 
   const mapHTML = `
   <!DOCTYPE html>
@@ -46,24 +35,21 @@ const RideMapView = ({ pickup, destination, routeLine, currentLocation }) => {
     <script>
       var map = L.map('map').setView([${pickup.latitude}, ${pickup.longitude}], 13);
 
-      L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-        attribution: '© OpenStreetMap'
-      }).addTo(map);
+      L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(map);
 
-      // Pickup marker
-      L.marker([${pickup.latitude}, ${pickup.longitude}])
-        .addTo(map)
-        .bindPopup("Pickup");
+      // Pickup
+      L.marker([${pickup.latitude}, ${pickup.longitude}]).addTo(map);
 
-      // Destination marker
-      L.marker([${destination.latitude}, ${destination.longitude}])
-        .addTo(map)
-        .bindPopup("Destination");
+      // Destination
+      L.marker([${destination.latitude}, ${destination.longitude}]).addTo(map);
 
-      // ✅ REAL ROUTE
-      var route = [${routeCoords}];
+      // ✅ ROUTE (REAL ROAD PATH)
+      var route = ${routeCoordsJS};
+
       if (route.length > 0) {
-        var polyline = L.polyline(route, {
+        var latlngs = route.map(p => [p.latitude, p.longitude]);
+
+        var polyline = L.polyline(latlngs, {
           color: '#d81b60',
           weight: 5
         }).addTo(map);
@@ -71,10 +57,27 @@ const RideMapView = ({ pickup, destination, routeLine, currentLocation }) => {
         map.fitBounds(polyline.getBounds());
       }
 
-      // ✅ USER MARKER
-      ${userMarker}
+      // ✅ USER LOCATION
+      var userMarker = null;
 
+      function updateLocation(lat, lng) {
+        if (userMarker) {
+          userMarker.setLatLng([lat, lng]);
+        } else {
+          userMarker = L.marker([lat, lng], {
+            icon: L.icon({
+              iconUrl: 'https://cdn-icons-png.flaticon.com/512/64/64113.png',
+              iconSize: [30, 30]
+            })
+          }).addTo(map);
+        }
+
+        map.panTo([lat, lng]);
+      }
+
+      ${currentLocJS ? `updateLocation(${currentLocJS});` : ''}
     </script>
+
   </body>
   </html>
   `;
