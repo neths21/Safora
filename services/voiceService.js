@@ -1,66 +1,71 @@
 import {
   ExpoSpeechRecognitionModule,
-  useSpeechRecognitionEvent,
 } from 'expo-speech-recognition';
 
-const TRIGGER_WORDS = ['help', 'sos', 'emergency', 'police', 'bachao'];
+const TRIGGER_WORDS = ['help', 'sos', 'emergency', 'police', 'bachao', 'help me'];
 
 let isListening = false;
+let isStarting = false;
 let onTriggerCallback = null;
 
 export const startVoiceDetection = async (onTrigger) => {
+  if (isStarting) return;
+  isStarting = true;
+  isListening = false;
+
   try {
     const { granted } = await ExpoSpeechRecognitionModule.requestPermissionsAsync();
     if (!granted) {
-      console.log('Speech recognition permission denied');
+      console.log('Speech permission denied');
+      isStarting = false;
       return false;
     }
 
     onTriggerCallback = onTrigger;
-    isListening = true;
 
-    await ExpoSpeechRecognitionModule.start({
-      lang: 'en-IN',
-      continuous: true,
-      interimResults: true,
-      requiresOnDeviceRecognition: true, // ← offline mode
-      addsPunctuation: false,
-    });
+    const languages = ['en-US', 'en-GB', 'en'];
 
-    console.log('Voice detection started');
-    return true;
-  } catch (error) {
-    // If offline not available, fall back to online
-    console.log('Offline not available, trying online...');
-    try {
-      await ExpoSpeechRecognitionModule.start({
-        lang: 'en-IN',
-        continuous: true,
-        interimResults: true,
-        requiresOnDeviceRecognition: false,
-        addsPunctuation: false,
-      });
-      return true;
-    } catch (fallbackError) {
-      console.error('Voice detection failed:', fallbackError);
-      return false;
+    for (const lang of languages) {
+      try {
+        await ExpoSpeechRecognitionModule.start({
+          lang,
+          continuous: false,
+          interimResults: true,
+          requiresOnDeviceRecognition: false,
+          addsPunctuation: false,
+        });
+        isListening = true;
+        isStarting = false;
+        console.log('Voice detection started:', lang);
+        return true;
+      } catch (e) {
+        continue;
+      }
     }
+
+    isStarting = false;
+    return false;
+  } catch (error) {
+    console.error('Voice start failed:', error.message);
+    isStarting = false;
+    isListening = false;
+    return false;
   }
 };
 
 export const stopVoiceDetection = async () => {
+  isListening = false;
+  isStarting = false;
+  onTriggerCallback = null;
   try {
-    isListening = false;
-    onTriggerCallback = null;
     await ExpoSpeechRecognitionModule.stop();
-    console.log('Voice detection stopped');
-  } catch (error) {
-    console.error('Error stopping voice detection:', error);
+  } catch (e) {
+    // ignore
   }
 };
 
 export const checkTranscript = (transcript) => {
-  if (!transcript || !isListening) return false;
+  if (!transcript) return false;
   const lower = transcript.toLowerCase();
   const triggered = TRIGGER_WORDS.some(word => lower.includes(word));
   if (triggered && onTriggerCallback) {
