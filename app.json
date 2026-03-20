@@ -15,6 +15,7 @@
       "supportsTablet": true
     },
     "android": {
+      "package": "com.riduvarshinisb.Safora",
       "adaptiveIcon": {
         "foregroundImage": "./assets/android-icon-foreground.png",
         "backgroundImage": "./assets/android-icon-background.png",
@@ -29,8 +30,7 @@
         "android.permission.ACCESS_FINE_LOCATION",
         "android.permission.RECORD_AUDIO",
         "android.permission.SEND_SMS"
-      ],
-      "package": "com.riduvarshinisb.Safora"
+      ]
     },
     "web": {
       "favicon": "./assets/favicon.png"
@@ -39,9 +39,9 @@
       [
         "expo-location",
         {
-          "locationAlwaysAndWhenInUsePermission": "This app tracks your location",
-          "locationAlwaysPermission": "Needed for safety alerts",
-          "locationWhenInUsePermission": "Needed for ride tracking"
+          "locationWhenInUsePermission": "Allow Safora to access your location for ride tracking",
+          "locationAlwaysAndWhenInUsePermission": "Allow Safora to track your location even in background for safety",
+          "isAndroidBackgroundLocationEnabled": true
         }
       ]
     ],

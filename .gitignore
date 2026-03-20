@@ -41,3 +41,7 @@ yarn-error.*
 /android
 
 .env
+
+/assets
+
+/firebaseConfig.js

@@ -4,12 +4,15 @@ import {
   SafeAreaView, Platform, Alert, Animated,
 } from 'react-native';
 import { startRide, stopRide } from '../services/rideService';
+import RideMapView from './RideMapView';
+import { geocodeAddress } from '../services/geocodingService';
 
 export default function RideScreen({ navigation, route }) {
   const { pickup, destination, vehicleNumber, startTime, startDate, userId } = route.params;
   const [elapsedTime, setElapsedTime] = useState(0);
-  const [rideId, setRideId] = useState(null);
   const [rideStarted, setRideStarted] = useState(false);
+  const [pickupCoords, setPickupCoords] = useState(null);
+  const [destinationCoords, setDestinationCoords] = useState(null);
   const pulseAnim = useRef(new Animated.Value(1)).current;
 
   // ── Pulse animation ──────────────────────────────────────
@@ -33,17 +36,29 @@ export default function RideScreen({ navigation, route }) {
   // ── Start ride on mount ──────────────────────────────────
   useEffect(() => {
     handleStartRide();
+    convertAddresses();
   }, []);
 
   const handleStartRide = async () => {
     try {
-      const id = await startRide(userId, destination);
-      setRideId(id);
+      await startRide(userId, destination);
       setRideStarted(true);
-      console.log('Ride started with ID:', id);
+      console.log('Ride started');
     } catch (error) {
       console.error('Error starting ride:', error.message);
       Alert.alert('Error', 'Could not start ride tracking. Your ride will continue without tracking.');
+    }
+  };
+
+  // ── Convert addresses to coordinates for map ─────────────
+  const convertAddresses = async () => {
+    try {
+      const pickupC = await geocodeAddress(pickup);
+      const destC = await geocodeAddress(destination);
+      setPickupCoords(pickupC);
+      setDestinationCoords(destC);
+    } catch (e) {
+      console.error('Could not geocode addresses:', e.message);
     }
   };
 
@@ -93,6 +108,13 @@ export default function RideScreen({ navigation, route }) {
           <Text style={styles.headerDate}>{startDate}</Text>
         </View>
 
+        {/* Map View — from Person 2 */}
+        {pickupCoords && destinationCoords && (
+          <View style={styles.mapContainer}>
+            <RideMapView pickup={pickupCoords} destination={destinationCoords} />
+          </View>
+        )}
+
         <View style={styles.timerCard}>
           <Text style={styles.timerLabel}>Duration</Text>
           <Text style={styles.timerValue}>{formatTime(elapsedTime)}</Text>
@@ -141,10 +163,7 @@ export default function RideScreen({ navigation, route }) {
           <TouchableOpacity
             style={styles.sosBtn}
             onPress={() => navigation.navigate('Emergency', {
-              vehicleNumber,
-              pickup,
-              destination,
-              userId,
+              vehicleNumber, pickup, destination, userId,
             })}
             activeOpacity={0.8}
           >
@@ -154,11 +173,7 @@ export default function RideScreen({ navigation, route }) {
           </TouchableOpacity>
         </Animated.View>
 
-        <TouchableOpacity
-          style={styles.endBtn}
-          onPress={handleEndRide}
-          activeOpacity={0.85}
-        >
+        <TouchableOpacity style={styles.endBtn} onPress={handleEndRide} activeOpacity={0.85}>
           <Text style={styles.endBtnText}>✓  End Ride Safely</Text>
         </TouchableOpacity>
 
@@ -170,12 +185,15 @@ export default function RideScreen({ navigation, route }) {
 const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: '#f9f0f5' },
   container: { flex: 1, paddingHorizontal: 22, paddingTop: Platform.OS === 'android' ? 48 : 20, paddingBottom: 30 },
-  header: { marginBottom: 18 },
+  header: { marginBottom: 12 },
   statusRow: { flexDirection: 'row', alignItems: 'center', marginBottom: 6 },
   statusDot: { width: 9, height: 9, borderRadius: 5, marginRight: 8 },
   statusText: { fontSize: 12, fontWeight: '700', textTransform: 'uppercase' },
   headerTitle: { fontSize: 26, fontWeight: '800', color: '#3a1a2e' },
   headerDate: { fontSize: 13, color: '#a06080', marginTop: 2 },
+  mapContainer: {
+    height: 180, borderRadius: 15, overflow: 'hidden', marginBottom: 12,
+  },
   timerCard: {
     backgroundColor: '#c0136e', borderRadius: 18, paddingVertical: 22,
     alignItems: 'center', marginBottom: 16,
