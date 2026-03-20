@@ -1,14 +1,21 @@
-import { View, Text, StyleSheet } from 'react-native';
+import { useEffect } from 'react';
+import * as Location from 'expo-location';
+import RideMapView from './screens/RideScreen';
 
 export default function App() {
+  useEffect(() => {
+    const requestBackgroundPermission = async () => {
+      const { status } = await Location.requestBackgroundPermissionsAsync();
+      if (status !== 'granted') {
+        console.warn('Background location permission denied.');
+      }
+    };
+    requestBackgroundPermission();
+  }, []);
+
   return (
-    <View style={styles.container}>
-      <Text style={styles.title}>SAFORA</Text>
-    </View>
+    <RideMapView
+      destination={{ latitude: 13.0827, longitude: 80.2707 }}
+    />
   );
 }
-
-const styles = StyleSheet.create({
-  container: { flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: '#fff' },
-  title: { fontSize: 32, fontWeight: 'bold', color: '#333' },
-});
