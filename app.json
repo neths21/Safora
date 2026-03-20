@@ -45,7 +45,8 @@
           "isAndroidBackgroundLocationEnabled": true
         }
       ],
-      "expo-sharing"
+      "expo-sharing",
+      "expo-speech-recognition"
     ],
     "extra": {
       "eas": {

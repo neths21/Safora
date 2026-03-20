@@ -11,6 +11,7 @@ import { fetchRoute } from '../services/routeService';
 import { detectDeviation } from '../services/deviationService';
 import { getCurrentLocation } from '../services/locationService';
 import { useVoiceTrigger } from '../hooks/useVoiceTrigger';
+import FakeCallModal from '../components/FakeCallModal';
 
 export default function RideScreen({ navigation, route }) {
   const { pickup, destination, vehicleNumber, startTime, startDate, userId } = route.params;
@@ -20,6 +21,7 @@ export default function RideScreen({ navigation, route }) {
   const [destinationCoords, setDestinationCoords] = useState(null);
   const [routeLine, setRouteLine] = useState([]);
   const [currentLocation, setCurrentLocation] = useState(null);
+  const [showFakeCall, setShowFakeCall] = useState(false);
   const pulseAnim = useRef(new Animated.Value(1)).current;
 
   useEffect(() => {
@@ -214,7 +216,13 @@ export default function RideScreen({ navigation, route }) {
             </View>
           </View>
         </View>
-
+        <TouchableOpacity
+          style={styles.fakeCallBtn}
+          onPress={() => setShowFakeCall(true)}
+          activeOpacity={0.85}
+        >
+          <Text style={styles.fakeCallBtnText}>📞  Fake Call</Text>
+        </TouchableOpacity>
         <Animated.View style={{ transform: [{ scale: pulseAnim }], marginBottom: 14 }}>
           <TouchableOpacity
             style={styles.sosBtn}
@@ -234,6 +242,11 @@ export default function RideScreen({ navigation, route }) {
         </TouchableOpacity>
 
       </ScrollView>
+      <FakeCallModal
+        visible={showFakeCall}
+        onAnswer={() => console.log('Fake call answered')}
+        onDecline={() => setShowFakeCall(false)}
+      />
     </SafeAreaView>
   );
 }
@@ -293,4 +306,10 @@ const styles = StyleSheet.create({
     alignItems: 'center', borderWidth: 2, borderColor: '#e91e8c',
   },
   endBtnText: { color: '#e91e8c', fontSize: 16, fontWeight: '700' },
+  fakeCallBtn: {
+  backgroundColor: '#e3f2fd', borderRadius: 14, paddingVertical: 14,
+  alignItems: 'center', borderWidth: 1.5, borderColor: '#1565c0',
+  marginBottom: 14,
+},
+fakeCallBtnText: { color: '#1565c0', fontSize: 15, fontWeight: '700' },
 });
