@@ -1,16 +1,17 @@
 import React, { useState, useEffect } from "react";
 import {
-  View,
-  Text,
-  TouchableOpacity,
-  StyleSheet,
-  SafeAreaView,
-  Alert,
-} from "react-native";
-
-import { startRide, stopRide } from "../services/rideService";
-import RideMapView from "./RideMapView";
-import { geocodeAddress } from "../services/geocodingService";
+  View, Text, TouchableOpacity, StyleSheet,
+  Alert, Animated, ScrollView, Platform,
+} from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
+import { startRide, stopRide } from '../services/rideService';
+import RideMapView from './RideMapView';
+import { geocodeAddress } from '../services/geocodingService';
+import { fetchRoute } from '../services/routeService';
+import { detectDeviation } from '../services/deviationService';
+import { getCurrentLocation } from '../services/locationService';
+import { useVoiceTrigger } from '../hooks/useVoiceTrigger';
+import FakeCallModal from '../components/FakeCallModal';
 
 export default function RideScreen({ navigation, route }) {
   const { pickup, destination, vehicleNumber, startTime, startDate, userId } =
@@ -18,11 +19,24 @@ export default function RideScreen({ navigation, route }) {
 
   const [elapsedTime, setElapsedTime] = useState(0);
   const [rideStarted, setRideStarted] = useState(false);
-
   const [pickupCoords, setPickupCoords] = useState(null);
   const [destinationCoords, setDestinationCoords] = useState(null);
+  const [routeLine, setRouteLine] = useState([]);
+  const [currentLocation, setCurrentLocation] = useState(null);
+  const [showFakeCall, setShowFakeCall] = useState(false);
+  const pulseAnim = useRef(new Animated.Value(1)).current;
 
-  // ⏱ Timer
+  useEffect(() => {
+    const pulse = Animated.loop(
+      Animated.sequence([
+        Animated.timing(pulseAnim, { toValue: 1.06, duration: 700, useNativeDriver: true }),
+        Animated.timing(pulseAnim, { toValue: 1, duration: 700, useNativeDriver: true }),
+      ])
+    );
+    pulse.start();
+    return () => pulse.stop();
+  }, []);
+
   useEffect(() => {
     const interval = setInterval(() => {
       setElapsedTime((prev) => prev + 1);
@@ -31,15 +45,72 @@ export default function RideScreen({ navigation, route }) {
     return () => clearInterval(interval);
   }, []);
 
-  // 🚗 Start ride
   useEffect(() => {
     handleStartRide();
   }, []);
+
+  useEffect(() => {
+    const convertAddresses = async () => {
+      try {
+        const pickupC = await geocodeAddress(pickup);
+        const destC = await geocodeAddress(destination);
+        setPickupCoords(pickupC);
+        setDestinationCoords(destC);
+        const route = await fetchRoute(pickupC, destC);
+        setRouteLine(route);
+      } catch (e) {
+        console.error('Could not geocode addresses:', e.message);
+      }
+    };
+    convertAddresses();
+  }, []);
+
+  useEffect(() => {
+    if (!routeLine || routeLine.length === 0) return;
+    const interval = setInterval(async () => {
+      try {
+        const location = await getCurrentLocation();
+        setCurrentLocation(location);
+        const result = await detectDeviation(userId, location, routeLine);
+        console.log('Deviation check:', result);
+        if (result.deviated) {
+          Alert.alert(
+            '⚠️ Route Deviation',
+            'You seem to be off route. Are you safe?',
+            [
+              { text: 'Yes, I am Safe', style: 'cancel' },
+              {
+                text: 'I Need Help',
+                style: 'destructive',
+                onPress: () => navigation.navigate('Emergency', {
+                  vehicleNumber, pickup, destination, userId,
+                }),
+              },
+            ]
+          );
+        }
+      } catch (error) {
+        console.error('Deviation error:', error.message);
+      }
+    }, 4000);
+    return () => clearInterval(interval);
+  }, [routeLine]);
+
+  useVoiceTrigger(
+    (transcript) => {
+      console.log('SOS triggered by voice:', transcript);
+      navigation.navigate('Emergency', {
+        vehicleNumber, pickup, destination, userId,
+      });
+    },
+    rideStarted
+  );
 
   const handleStartRide = async () => {
     try {
       await startRide(userId, destination);
       setRideStarted(true);
+      console.log('Ride started');
     } catch (error) {
       Alert.alert("Error", "Ride failed to start");
     }
@@ -68,13 +139,14 @@ export default function RideScreen({ navigation, route }) {
       {
         text: "End Ride",
         onPress: async () => {
-          await stopRide(userId);
-
-          navigation.navigate("Completion", {
-            pickup,
-            destination,
-            vehicleNumber,
-            userId,
+          try {
+            await stopRide(userId);
+            console.log('Ride stopped');
+          } catch (error) {
+            console.error('Error stopping ride:', error.message);
+          }
+          navigation.navigate('Completion', {
+            pickup, destination, vehicleNumber, userId,
             duration: formatTime(elapsedTime),
           });
         },
@@ -101,7 +173,7 @@ export default function RideScreen({ navigation, route }) {
 
   return (
     <SafeAreaView style={styles.safe}>
-      <View style={styles.container}>
+      <ScrollView contentContainerStyle={styles.container} showsVerticalScrollIndicator={false}>
 
         <Text style={styles.status}>🟢 RIDE IN PROGRESS</Text>
         <Text style={styles.title}>🚗 Ride Tracker</Text>
@@ -118,10 +190,28 @@ export default function RideScreen({ navigation, route }) {
           )}
         </View>
 
-        <View style={styles.durationCard}>
-          <Text style={styles.durationLabel}>DURATION</Text>
-          <Text style={styles.duration}>{formatTime(elapsedTime)}</Text>
-          <Text style={styles.started}>Started at {startTime}</Text>
+        {rideStarted && (
+          <View style={styles.voiceIndicator}>
+            <Text style={styles.voiceDot}>🎤</Text>
+            <Text style={styles.voiceText}>Listening for "Help" or "SOS"</Text>
+          </View>
+        )}
+
+        {pickupCoords && destinationCoords && (
+          <View style={styles.mapContainer}>
+            <RideMapView
+              pickup={pickupCoords}
+              destination={destinationCoords}
+              routeLine={routeLine}
+              currentLocation={currentLocation}
+            />
+          </View>
+        )}
+
+        <View style={styles.timerCard}>
+          <Text style={styles.timerLabel}>Duration</Text>
+          <Text style={styles.timerValue}>{formatTime(elapsedTime)}</Text>
+          <Text style={styles.timerSub}>Started at {startTime}</Text>
         </View>
 
         <View style={styles.card}>
@@ -136,41 +226,71 @@ export default function RideScreen({ navigation, route }) {
           <Text style={styles.label}>🚘 Vehicle</Text>
           <Text style={styles.vehicle}>{vehicleNumber}</Text>
         </View>
+        <TouchableOpacity
+          style={styles.fakeCallBtn}
+          onPress={() => setShowFakeCall(true)}
+          activeOpacity={0.85}
+        >
+          <Text style={styles.fakeCallBtnText}>📞  Fake Call</Text>
+        </TouchableOpacity>
+        <Animated.View style={{ transform: [{ scale: pulseAnim }], marginBottom: 14 }}>
+          <TouchableOpacity
+            style={styles.sosBtn}
+            onPress={() => navigation.navigate('Emergency', {
+              vehicleNumber, pickup, destination, userId,
+            })}
+            activeOpacity={0.8}
+          >
+            <Text style={styles.sosBtnIcon}>🚨</Text>
+            <Text style={styles.sosBtnText}>SOS  EMERGENCY</Text>
+            <Text style={styles.sosBtnSub}>Tap for immediate help</Text>
+          </TouchableOpacity>
+        </Animated.View>
 
-        <TouchableOpacity style={styles.sosBtn} onPress={handleSOS}>
-          <Text style={styles.sosText}>🚨 SOS EMERGENCY</Text>
-          <Text style={styles.sosSub}>Tap for immediate help</Text>
+        <TouchableOpacity style={styles.endBtn} onPress={handleEndRide} activeOpacity={0.85}>
+          <Text style={styles.endBtnText}>✓  End Ride Safely</Text>
         </TouchableOpacity>
 
-        <TouchableOpacity style={styles.endBtn} onPress={handleEndRide}>
-          <Text style={styles.endText}>✔ End Ride Safely</Text>
-        </TouchableOpacity>
-
-      </View>
+      </ScrollView>
+      <FakeCallModal
+        visible={showFakeCall}
+        onAnswer={() => console.log('Fake call answered')}
+        onDecline={() => setShowFakeCall(false)}
+      />
     </SafeAreaView>
   );
 }
 const styles = StyleSheet.create({
-  safe: { flex: 1, backgroundColor: "#f8f0f5" },
-  container: { flex: 1, padding: 16 },
-
-  status: { color: "green", fontWeight: "600" },
-  title: { fontSize: 24, fontWeight: "800", marginTop: 4 },
-  date: { color: "#888", marginBottom: 10 },
-
-  mapContainer: {
-    height: 200,
-    borderRadius: 15,
-    overflow: "hidden",
-    marginBottom: 12,
+  safe: { flex: 1, backgroundColor: '#f9f0f5' },
+  container: { paddingHorizontal: 22, paddingTop: Platform.OS === 'android' ? 48 : 20, paddingBottom: 30 },
+  header: { marginBottom: 12 },
+  statusRow: { flexDirection: 'row', alignItems: 'center', marginBottom: 6 },
+  statusDot: { width: 9, height: 9, borderRadius: 5, marginRight: 8 },
+  statusText: { fontSize: 12, fontWeight: '700', textTransform: 'uppercase' },
+  headerTitle: { fontSize: 26, fontWeight: '800', color: '#3a1a2e' },
+  headerDate: { fontSize: 13, color: '#a06080', marginTop: 2 },
+  voiceIndicator: {
+    flexDirection: 'row', alignItems: 'center',
+    backgroundColor: '#f3e5f5', borderRadius: 10,
+    paddingHorizontal: 12, paddingVertical: 8,
+    marginBottom: 12, borderWidth: 1, borderColor: '#e1bee7',
   },
-
-  durationCard: {
-    backgroundColor: "#d81b60",
-    padding: 20,
-    borderRadius: 15,
-    alignItems: "center",
-    marginBottom: 12,
+  voiceDot: { fontSize: 14, marginRight: 8 },
+  voiceText: { fontSize: 12, color: '#7b1fa2', fontWeight: '600' },
+  mapContainer: { height: 180, borderRadius: 15, overflow: 'hidden', marginBottom: 12 },
+  timerCard: {
+    backgroundColor: '#c0136e', borderRadius: 18, paddingVertical: 22,
+    alignItems: 'center', marginBottom: 16,
+    shadowColor: '#c0136e', shadowOpacity: 0.3, shadowRadius: 12,
+    shadowOffset: { width: 0, height: 5 }, elevation: 6,
+  },
+  timerLabel: { color: '#f8c0dc', fontSize: 12, fontWeight: '600', textTransform: 'uppercase', marginBottom: 4 },
+  timerValue: { color: '#fff', fontSize: 52, fontWeight: '800', letterSpacing: 2 },
+  timerSub: { color: '#f8c0dc', fontSize: 12, marginTop: 4 },
+  detailsCard: {
+    backgroundColor: '#fff', borderRadius: 18, padding: 18, marginBottom: 16,
+    shadowColor: '#c0136e', shadowOpacity: 0.06, shadowRadius: 12,
+    shadowOffset: { width: 0, height: 4 }, elevation: 3,
   },
   durationLabel: { color: "#fff", fontSize: 12 },
   duration: { color: "#fff", fontSize: 32, fontWeight: "bold" },
@@ -189,11 +309,9 @@ const styles = StyleSheet.create({
   vehicle: { fontWeight: "bold", color: "#d81b60" },
 
   sosBtn: {
-    backgroundColor: "#e53935",
-    padding: 18,
-    borderRadius: 15,
-    alignItems: "center",
-    marginBottom: 10,
+    backgroundColor: '#d32f2f', borderRadius: 16, paddingVertical: 18, alignItems: 'center',
+    shadowColor: '#d32f2f', shadowOpacity: 0.4, shadowRadius: 12,
+    shadowOffset: { width: 0, height: 5 }, elevation: 8, marginBottom: 14,
   },
   sosText: { color: "#fff", fontWeight: "bold", fontSize: 16 },
   sosSub: { color: "#fff", fontSize: 12 },
@@ -205,5 +323,11 @@ const styles = StyleSheet.create({
     borderRadius: 15,
     alignItems: "center",
   },
-  endText: { color: "#d81b60", fontWeight: "bold" },
+  endBtnText: { color: '#e91e8c', fontSize: 16, fontWeight: '700' },
+  fakeCallBtn: {
+  backgroundColor: '#f9dfe9', borderRadius: 14, paddingVertical: 14,
+  alignItems: 'center', borderWidth: 1.5, borderColor: '#d80a9b',
+  marginBottom: 14,
+},
+fakeCallBtnText: { color: '#da39a2', fontSize: 15, fontWeight: '700' },
 });

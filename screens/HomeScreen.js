@@ -3,8 +3,10 @@ import {
   View, Text, TextInput, TouchableOpacity,
   StyleSheet, ScrollView, Alert, SafeAreaView, Platform,
 } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
 import { shareRideStarted } from '../services/shareService';
 import { saveTrustedContact, getTrustedContacts } from '../services/firebaseService';
+import { getCurrentLocation } from '../services/locationService';
 
 // Hardcoded userId for now — will be replaced with real auth later
 const USER_ID = 'testUser123';
@@ -17,6 +19,7 @@ export default function HomeScreen({ navigation }) {
   const [contactPhone, setContactPhone] = useState('');
   const [contacts, setContacts] = useState([]);
   const [showAddContact, setShowAddContact] = useState(false);
+  const [loadingLocation, setLoadingLocation] = useState(false);
 
   useEffect(() => {
     loadContacts();
@@ -28,6 +31,18 @@ export default function HomeScreen({ navigation }) {
       setContacts(list);
     } catch (error) {
       console.error('Error loading contacts:', error.message);
+    }
+  };
+
+  const handleUseCurrentLocation = async () => {
+    try {
+      setLoadingLocation(true);
+      const loc = await getCurrentLocation();
+      setPickup(`${loc.latitude}, ${loc.longitude}`);
+    } catch (err) {
+      Alert.alert("Error", "Could not fetch location");
+    } finally {
+      setLoadingLocation(false);
     }
   };
 
@@ -63,11 +78,9 @@ export default function HomeScreen({ navigation }) {
     }
 
     try {
-      // Notify trusted contacts that ride has started
       await shareRideStarted(USER_ID, destination.trim());
     } catch (error) {
       console.error('Error sharing ride start:', error.message);
-      // Don't block ride start if SMS fails
     }
 
     navigation.navigate('Ride', {
@@ -150,6 +163,23 @@ export default function HomeScreen({ navigation }) {
             value={pickup}
             onChangeText={setPickup}
           />
+
+          {/* ✅ Pill-style location button */}
+          <TouchableOpacity
+            onPress={handleUseCurrentLocation}
+            style={[styles.locationBtn, loadingLocation && styles.locationBtnLoading]}
+            activeOpacity={0.75}
+            disabled={loadingLocation}
+          >
+            <Ionicons
+              name={loadingLocation ? "sync" : "location-sharp"}
+              size={15}
+              color={loadingLocation ? "#c880a8" : "#e91e8c"}
+            />
+            <Text style={[styles.locationBtnText, loadingLocation && styles.locationBtnTextLoading]}>
+              {loadingLocation ? "Fetching location..." : "Use current location"}
+            </Text>
+          </TouchableOpacity>
 
           <Text style={styles.label}>🏁  Destination</Text>
           <TextInput
@@ -245,4 +275,32 @@ const styles = StyleSheet.create({
   },
   safetyIcon: { fontSize: 20, marginRight: 10 },
   safetyText: { flex: 1, fontSize: 12.5, color: '#a06080', lineHeight: 18 },
+
+  // Location button
+  locationBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 7,
+    alignSelf: 'flex-start',
+    backgroundColor: '#fef0f7',
+    borderWidth: 1.5,
+    borderColor: '#e91e8c',
+    borderRadius: 24,
+    paddingVertical: 8,
+    paddingHorizontal: 16,
+    marginBottom: 14,
+  },
+  locationBtnLoading: {
+    borderColor: '#e8b4d0',
+    backgroundColor: '#fdf5f9',
+  },
+  locationBtnText: {
+    color: '#c0136e',
+    fontSize: 14,
+    fontWeight: '600',
+    letterSpacing: 0.1,
+  },
+  locationBtnTextLoading: {
+    color: '#c880a8',
+  },
 });

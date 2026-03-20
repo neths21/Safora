@@ -3,25 +3,27 @@ import {
   View, Text, TouchableOpacity, StyleSheet,
   SafeAreaView, Platform, Animated, Linking, Alert, ScrollView,
 } from 'react-native';
-import { triggerSOS, resolveEmergency, isEmergencyActive } from '../services/emergencyService';
+import { triggerSOS, resolveEmergency } from '../services/emergencyService';
 import { isRecording } from '../services/audioService';
 import * as Location from 'expo-location';
+import * as Sharing from 'expo-sharing';
+import SafetyTipsModal from '../components/SafetyTipsModal';
 
 export default function EmergencyScreen({ navigation, route }) {
   const { vehicleNumber, pickup, destination, userId } = route.params || {};
   const alertAnim = useRef(new Animated.Value(0)).current;
   const [recording, setRecording] = useState(false);
   const [sosTriggered, setSosTriggered] = useState(false);
+  const [showSafetyTips, setShowSafetyTips] = useState(false);
+  const [recordingUri, setRecordingUri] = useState(null);
 
   useEffect(() => {
     Animated.timing(alertAnim, {
       toValue: 1, duration: 400, useNativeDriver: true
     }).start();
 
-    // Trigger SOS automatically when screen loads
     triggerSOSOnLoad();
 
-    // Poll recording status every second
     const interval = setInterval(() => {
       setRecording(isRecording());
     }, 1000);
@@ -31,17 +33,16 @@ export default function EmergencyScreen({ navigation, route }) {
 
   const triggerSOSOnLoad = async () => {
     try {
-      // Get current location
       const location = await Location.getCurrentPositionAsync({});
       const { latitude, longitude } = location.coords;
-
       await triggerSOS(userId || 'defaultUser', latitude, longitude);
       setSosTriggered(true);
+      setShowSafetyTips(true);
       console.log('SOS triggered from EmergencyScreen');
     } catch (error) {
       console.error('Error triggering SOS:', error.message);
-      // Still show the screen even if SOS fails
       setSosTriggered(true);
+      setShowSafetyTips(true);
     }
   };
 
@@ -55,12 +56,37 @@ export default function EmergencyScreen({ navigation, route }) {
           text: 'Yes, I am safe',
           onPress: async () => {
             try {
-              await resolveEmergency(userId || 'defaultUser');
-              console.log('Emergency resolved');
+              const uri = await resolveEmergency(userId || 'defaultUser');
+              if (uri) {
+                setRecordingUri(uri);
+                Alert.alert(
+                  'Recording Saved',
+                  'Emergency audio has been saved to your device. Share it now?',
+                  [
+                    {
+                      text: 'Share Now',
+                      onPress: async () => {
+                        try {
+                          await Sharing.shareAsync(uri);
+                        } catch (e) {
+                          console.error('Error sharing:', e.message);
+                        }
+                        navigation.goBack();
+                      },
+                    },
+                    {
+                      text: 'Later',
+                      onPress: () => navigation.goBack(),
+                    },
+                  ]
+                );
+              } else {
+                navigation.goBack();
+              }
             } catch (error) {
               console.error('Error resolving emergency:', error.message);
+              navigation.goBack();
             }
-            navigation.goBack();
           },
         },
       ]
@@ -93,7 +119,6 @@ export default function EmergencyScreen({ navigation, route }) {
           </View>
         </Animated.View>
 
-        {/* Recording indicator */}
         {recording && (
           <View style={styles.recordingBanner}>
             <Text style={styles.recordingDot}>●</Text>
@@ -176,6 +201,12 @@ export default function EmergencyScreen({ navigation, route }) {
         </TouchableOpacity>
 
       </ScrollView>
+
+      <SafetyTipsModal
+        visible={showSafetyTips}
+        onClose={() => setShowSafetyTips(false)}
+      />
+
     </SafeAreaView>
   );
 }

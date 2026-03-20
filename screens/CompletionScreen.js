@@ -1,23 +1,25 @@
 import React, { useEffect, useState } from 'react';
 import {
   View, Text, TouchableOpacity, StyleSheet,
-  SafeAreaView, Platform, Animated,
+  SafeAreaView, Platform, Animated, Alert, ScrollView,
 } from 'react-native';
 import { shareRideComplete } from '../services/shareService';
+import { getRecordings } from '../services/audioService';
+import * as Sharing from 'expo-sharing';
 
 export default function CompletionScreen({ navigation, route }) {
   const { pickup, destination, vehicleNumber, userId, duration } = route.params || {};
   const scaleAnim = new Animated.Value(0);
   const [shared, setShared] = useState(false);
+  const [recordings, setRecordings] = useState([]);
 
   useEffect(() => {
-    // Animate checkmark in
     Animated.spring(scaleAnim, {
       toValue: 1, tension: 50, friction: 6, useNativeDriver: true,
     }).start();
 
-    // Notify trusted contacts ride is complete
     notifyContacts();
+    loadRecordings();
   }, []);
 
   const notifyContacts = async () => {
@@ -30,9 +32,38 @@ export default function CompletionScreen({ navigation, route }) {
     }
   };
 
+  const loadRecordings = async () => {
+    try {
+      const list = await getRecordings(userId || 'defaultUser');
+      setRecordings(list);
+    } catch (error) {
+      console.error('Error loading recordings:', error.message);
+    }
+  };
+
+  const handleShareRecording = async (uri) => {
+    try {
+      const isAvailable = await Sharing.isAvailableAsync();
+      if (!isAvailable) {
+        Alert.alert('Sharing not available', 'Cannot share files on this device.');
+        return;
+      }
+      await Sharing.shareAsync(uri, {
+        mimeType: 'audio/m4a',
+        dialogTitle: 'Share Emergency Recording',
+      });
+    } catch (error) {
+      console.error('Error sharing recording:', error.message);
+      Alert.alert('Error', 'Could not share the recording.');
+    }
+  };
+
   return (
     <SafeAreaView style={styles.safe}>
-      <View style={styles.container}>
+      <ScrollView
+        contentContainerStyle={styles.container}
+        showsVerticalScrollIndicator={false}
+      >
 
         <Animated.View style={[styles.checkCircle, { transform: [{ scale: scaleAnim }] }]}>
           <Text style={styles.checkIcon}>✓</Text>
@@ -51,7 +82,6 @@ export default function CompletionScreen({ navigation, route }) {
 
         <View style={styles.summaryCard}>
           <Text style={styles.summaryTitle}>Ride Summary</Text>
-
           <View style={styles.summaryRow}>
             <Text style={styles.summaryLabel}>📍 From</Text>
             <Text style={styles.summaryValue}>{pickup}</Text>
@@ -72,6 +102,35 @@ export default function CompletionScreen({ navigation, route }) {
           )}
         </View>
 
+        {recordings.length > 0 && (
+          <View style={styles.recordingsCard}>
+            <Text style={styles.recordingsTitle}>🎙 Emergency Recordings</Text>
+            <Text style={styles.recordingsSubtitle}>
+              {recordings.length} recording{recordings.length > 1 ? 's' : ''} saved on your device
+            </Text>
+            {recordings.map((r, i) => (
+              <TouchableOpacity
+                key={i}
+                style={styles.recordingRow}
+                onPress={() => handleShareRecording(r.uri)}
+                activeOpacity={0.85}
+              >
+                <View style={styles.recordingInfo}>
+                  <Text style={styles.recordingName}>Recording {i + 1}</Text>
+                  <Text style={styles.recordingTime}>
+                    {new Date(parseInt(r.timestamp)).toLocaleTimeString([], {
+                      hour: '2-digit', minute: '2-digit'
+                    })}
+                  </Text>
+                </View>
+                <View style={styles.shareTag}>
+                  <Text style={styles.shareTagText}>Share</Text>
+                </View>
+              </TouchableOpacity>
+            ))}
+          </View>
+        )}
+
         <TouchableOpacity
           style={styles.homeBtn}
           onPress={() => navigation.navigate('Home')}
@@ -80,7 +139,7 @@ export default function CompletionScreen({ navigation, route }) {
           <Text style={styles.homeBtnText}>← Back to Home</Text>
         </TouchableOpacity>
 
-      </View>
+      </ScrollView>
     </SafeAreaView>
   );
 }
@@ -88,28 +147,28 @@ export default function CompletionScreen({ navigation, route }) {
 const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: '#f0faf4' },
   container: {
-    flex: 1, paddingHorizontal: 22,
+    paddingHorizontal: 22,
     paddingTop: Platform.OS === 'android' ? 60 : 40,
-    paddingBottom: 30, alignItems: 'center',
+    paddingBottom: 30,
   },
   checkCircle: {
     width: 100, height: 100, borderRadius: 50,
     backgroundColor: '#4caf50', justifyContent: 'center',
-    alignItems: 'center', marginBottom: 24,
+    alignItems: 'center', marginBottom: 24, alignSelf: 'center',
     shadowColor: '#4caf50', shadowOpacity: 0.4,
     shadowRadius: 16, shadowOffset: { width: 0, height: 6 }, elevation: 8,
   },
   checkIcon: { color: '#fff', fontSize: 52, fontWeight: '800' },
-  title: { fontSize: 28, fontWeight: '800', color: '#1b5e20', marginBottom: 6 },
-  subtitle: { fontSize: 15, color: '#4caf50', marginBottom: 20 },
+  title: { fontSize: 28, fontWeight: '800', color: '#1b5e20', marginBottom: 6, textAlign: 'center' },
+  subtitle: { fontSize: 15, color: '#4caf50', marginBottom: 20, textAlign: 'center' },
   notifyBanner: {
     backgroundColor: '#e8f5e9', borderRadius: 12, padding: 12,
-    marginBottom: 20, borderWidth: 1, borderColor: '#c8e6c9', width: '100%',
+    marginBottom: 20, borderWidth: 1, borderColor: '#c8e6c9',
   },
   notifyText: { fontSize: 13, color: '#2e7d32', textAlign: 'center', fontWeight: '600' },
   summaryCard: {
     backgroundColor: '#fff', borderRadius: 18, padding: 20,
-    width: '100%', marginBottom: 24,
+    marginBottom: 16,
     shadowColor: '#4caf50', shadowOpacity: 0.08,
     shadowRadius: 12, shadowOffset: { width: 0, height: 4 }, elevation: 4,
   },
@@ -121,9 +180,29 @@ const styles = StyleSheet.create({
   summaryLabel: { fontSize: 13, color: '#81c784', fontWeight: '600' },
   summaryValue: { fontSize: 13, color: '#2d4a30', fontWeight: '600', flex: 1, textAlign: 'right' },
   vehicleText: { color: '#2e7d32', fontWeight: '800', letterSpacing: 1 },
+  recordingsCard: {
+    backgroundColor: '#fff', borderRadius: 18, padding: 20,
+    marginBottom: 16, borderWidth: 1, borderColor: '#ffcdd2',
+    shadowColor: '#e53935', shadowOpacity: 0.06,
+    shadowRadius: 12, shadowOffset: { width: 0, height: 4 }, elevation: 3,
+  },
+  recordingsTitle: { fontSize: 15, fontWeight: '700', color: '#c62828', marginBottom: 4 },
+  recordingsSubtitle: { fontSize: 12, color: '#e57373', marginBottom: 12 },
+  recordingRow: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
+    paddingVertical: 10, borderBottomWidth: 1, borderBottomColor: '#ffebee',
+  },
+  recordingInfo: { flex: 1 },
+  recordingName: { fontSize: 14, fontWeight: '600', color: '#3a1a2e' },
+  recordingTime: { fontSize: 12, color: '#888', marginTop: 2 },
+  shareTag: {
+    backgroundColor: '#e53935', borderRadius: 8,
+    paddingHorizontal: 12, paddingVertical: 6,
+  },
+  shareTagText: { color: '#fff', fontSize: 12, fontWeight: '700' },
   homeBtn: {
     backgroundColor: '#4caf50', borderRadius: 14, paddingVertical: 16,
-    width: '100%', alignItems: 'center',
+    alignItems: 'center',
     shadowColor: '#4caf50', shadowOpacity: 0.3,
     shadowRadius: 10, shadowOffset: { width: 0, height: 4 }, elevation: 6,
   },
