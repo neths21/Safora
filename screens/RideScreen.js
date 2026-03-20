@@ -1,304 +1,209 @@
-/**
- * RideScreen.js — MAP SECTION (Person 2's responsibility)
- *
- * Renders:
- *   - Live user location marker
- *   - Route polyline from current location → destination
- *   - Deviation detection running in the background
- *
- * Integrates:
- *   - useLocationTracking() hook
- *   - routeService (OSRM)
- *   - deviationService
- *
- * NOTE: UI/styling outside map scope is handled by Person 1.
- *       This file exports only the map-related portion as <RideMapView>.
- */
+import React, { useState, useEffect } from "react";
+import {
+  View,
+  Text,
+  TouchableOpacity,
+  StyleSheet,
+  SafeAreaView,
+  Alert,
+} from "react-native";
 
-import React, { useEffect, useState, useRef, useCallback } from "react";
-import { StyleSheet, View, Text, ActivityIndicator } from "react-native";
-import MapView, { Marker, Polyline, PROVIDER_DEFAULT } from "react-native-maps";
-import useLocationTracking from "../hooks/useLocationTracking";
-import { fetchRoute } from "../services/routeService";
-import { detectDeviation } from "../services/deviationService";
-import { getActiveRideId } from "../services/rideService"; // Teammate's function
+import { startRide, stopRide } from "../services/rideService";
+import RideMapView from "./RideMapView";
+import { geocodeAddress } from "../services/geocodingService";
 
-// ─────────────────────────────────────────────
-// Constants
-// ─────────────────────────────────────────────
+export default function RideScreen({ navigation, route }) {
+  const { pickup, destination, vehicleNumber, startTime, startDate, userId } =
+    route.params;
 
-// How often to run deviation checks (ms)
-const DEVIATION_CHECK_INTERVAL_MS = 5000;
+  const [elapsedTime, setElapsedTime] = useState(0);
+  const [rideStarted, setRideStarted] = useState(false);
 
-// Default map delta (zoom level)
-const LATITUDE_DELTA = 0.01;
-const LONGITUDE_DELTA = 0.01;
+  const [pickupCoords, setPickupCoords] = useState(null);
+  const [destinationCoords, setDestinationCoords] = useState(null);
 
-// ─────────────────────────────────────────────
-// RideMapView Component
-// ─────────────────────────────────────────────
+  // ⏱ Timer
+  useEffect(() => {
+    const interval = setInterval(() => {
+      setElapsedTime((prev) => prev + 1);
+    }, 1000);
 
-/**
- * RideMapView
- * The map component for an active ride. Plug this into the full RideScreen layout.
- *
- * @param {{ destination: { latitude: number, longitude: number } }} props
- */
-const RideMapView = ({ destination }) => {
-  // Location tracking from custom hook
-  const { currentLocation, isTracking, error: locationError } = useLocationTracking();
+    return () => clearInterval(interval);
+  }, []);
 
-  // Route polyline state
-  const [routeCoords, setRouteCoords] = useState([]);
-  const [routeLoading, setRouteLoading] = useState(false);
-  const [routeError, setRouteError] = useState(null);
+  // 🚗 Start ride
+  useEffect(() => {
+    handleStartRide();
+  }, []);
 
-  // Deviation status
-  const [deviationDetected, setDeviationDetected] = useState(false);
-
-  // Refs
-  const mapRef = useRef(null);
-  const deviationIntervalRef = useRef(null);
-  const routeCoordsRef = useRef([]); // Keep latest coords accessible inside interval
-
-  // ─── Fetch Route ───────────────────────────
-
-  /**
-   * loadRoute
-   * Called once we have a valid currentLocation and destination.
-   * Fetches the driving route from OSRM and stores it in state.
-   */
-  const loadRoute = useCallback(async () => {
-    if (!currentLocation || !destination) return;
-
-    setRouteLoading(true);
-    setRouteError(null);
-
+  const handleStartRide = async () => {
     try {
-      const coords = await fetchRoute(currentLocation, destination);
-      setRouteCoords(coords);
-      routeCoordsRef.current = coords;
-      console.log("[RideMapView] Route loaded:", coords.length, "waypoints");
-    } catch (err) {
-      console.error("[RideMapView] Route fetch failed:", err);
-      setRouteError("Could not load route. Check connection.");
-    } finally {
-      setRouteLoading(false);
+      await startRide(userId, destination);
+      setRideStarted(true);
+    } catch (error) {
+      Alert.alert("Error", "Ride failed to start");
     }
-  }, [currentLocation?.latitude, currentLocation?.longitude, destination]);
+  };
 
-  // Fetch route when location first becomes available
+  // 📍 Convert addresses → coordinates
   useEffect(() => {
-    if (currentLocation && destination && routeCoords.length === 0) {
-      loadRoute();
-    }
-  }, [currentLocation, destination]);
-
-  // ─── Deviation Detection Loop ──────────────
-
-  /**
-   * Start deviation detection interval once route is loaded and tracking is active.
-   * Cleans up on unmount or when ride ends.
-   */
-  useEffect(() => {
-    if (!isTracking || routeCoords.length === 0) return;
-
-    const runDeviationCheck = async () => {
-      if (!currentLocation || routeCoordsRef.current.length === 0) return;
-
+    const convertAddresses = async () => {
       try {
-        const userId = await getActiveRideId();
-        const { deviated, distanceFromRoute } = await detectDeviation(
-          userId,
-          currentLocation,
-          routeCoordsRef.current
-        );
+        const pickupC = await geocodeAddress(pickup);
+        const destC = await geocodeAddress(destination);
 
-        setDeviationDetected(deviated);
-
-        if (deviated) {
-          console.warn(
-            `[RideMapView] ⚠️ Off-route by ${distanceFromRoute.toFixed(0)}m`
-          );
-        }
-      } catch (err) {
-        console.error("[RideMapView] Deviation check error:", err);
+        setPickupCoords(pickupC);
+        setDestinationCoords(destC);
+      } catch (e) {
+        Alert.alert("Error", "Could not find location");
       }
     };
 
-    // Start interval
-    deviationIntervalRef.current = setInterval(
-      runDeviationCheck,
-      DEVIATION_CHECK_INTERVAL_MS
-    );
+    convertAddresses();
+  }, []);
 
-    // Cleanup on tracking stop or unmount
-    return () => {
-      clearInterval(deviationIntervalRef.current);
-      deviationIntervalRef.current = null;
-    };
-  }, [isTracking, routeCoords.length]);
+  const handleEndRide = () => {
+    Alert.alert("End Ride", "Are you sure?", [
+      { text: "Cancel", style: "cancel" },
+      {
+        text: "End Ride",
+        onPress: async () => {
+          await stopRide(userId);
 
-  // Keep routeCoordsRef in sync
-  useEffect(() => {
-    routeCoordsRef.current = routeCoords;
-  }, [routeCoords]);
-
-  // ─── Camera: Follow user ───────────────────
-
-  /**
-   * Animate map camera to follow the user's current position.
-   */
-  useEffect(() => {
-    if (currentLocation && mapRef.current) {
-      mapRef.current.animateToRegion(
-        {
-          latitude: currentLocation.latitude,
-          longitude: currentLocation.longitude,
-          latitudeDelta: LATITUDE_DELTA,
-          longitudeDelta: LONGITUDE_DELTA,
+          navigation.navigate("Completion", {
+            pickup,
+            destination,
+            vehicleNumber,
+            userId,
+            duration: formatTime(elapsedTime),
+          });
         },
-        500 // animation duration ms
-      );
-    }
-  }, [currentLocation]);
+      },
+    ]);
+  };
 
-  // ─── Render ────────────────────────────────
+  const handleSOS = () => {
+    navigation.navigate("Emergency", {
+      pickup,
+      destination,
+      vehicleNumber,
+      userId,
+    });
+  };
 
-  // Show loader until we have a location
-  if (!currentLocation) {
-    return (
-      <View style={styles.centered}>
-        <ActivityIndicator size="large" color="#E53935" />
-        <Text style={styles.statusText}>
-          {locationError ? `Location error: ${locationError}` : "Acquiring GPS..."}
-        </Text>
-      </View>
-    );
-  }
+  const formatTime = (s) => {
+    const m = Math.floor(s / 60)
+      .toString()
+      .padStart(2, "0");
+    const sec = (s % 60).toString().padStart(2, "0");
+    return `${m}:${sec}`;
+  };
 
   return (
-    <View style={styles.container}>
-      {/* ── Map ── */}
-      <MapView
-        ref={mapRef}
-        style={styles.map}
-        provider={PROVIDER_DEFAULT}           // OpenStreetMap via default provider
-        initialRegion={{
-          latitude: currentLocation.latitude,
-          longitude: currentLocation.longitude,
-          latitudeDelta: LATITUDE_DELTA,
-          longitudeDelta: LONGITUDE_DELTA,
-        }}
-        showsUserLocation={false}             // We render our own marker
-        showsMyLocationButton={false}
-      >
-        {/* ── User Location Marker ── */}
-        <Marker
-          coordinate={{
-            latitude: currentLocation.latitude,
-            longitude: currentLocation.longitude,
-          }}
-          title="You"
-          description={isTracking ? "Tracking active" : "Tracking paused"}
-          pinColor={deviationDetected ? "#E53935" : "#1565C0"} // Red if deviated, blue otherwise
-        />
+    <SafeAreaView style={styles.safe}>
+      <View style={styles.container}>
 
-        {/* ── Destination Marker ── */}
-        {destination && (
-          <Marker
-            coordinate={{
-              latitude: destination.latitude,
-              longitude: destination.longitude,
-            }}
-            title="Destination"
-            pinColor="#2E7D32"
-          />
-        )}
+        <Text style={styles.status}>🟢 RIDE IN PROGRESS</Text>
+        <Text style={styles.title}>🚗 Ride Tracker</Text>
+        <Text style={styles.date}>{startDate}</Text>
 
-        {/* ── Route Polyline ── */}
-        {routeCoords.length > 0 && (
-          <Polyline
-            coordinates={routeCoords}
-            strokeColor={deviationDetected ? "#E53935" : "#1565C0"}
-            strokeWidth={4}
-            lineDashPattern={deviationDetected ? [8, 4] : undefined} // Dashed if deviated
-          />
-        )}
-      </MapView>
-
-      {/* ── Overlay Indicators ── */}
-
-      {/* Route loading spinner */}
-      {routeLoading && (
-        <View style={styles.overlayBadge}>
-          <ActivityIndicator size="small" color="#fff" />
-          <Text style={styles.overlayText}>Loading route…</Text>
+        <View style={styles.mapContainer}>
+          {pickupCoords && destinationCoords ? (
+            <RideMapView
+              pickup={pickupCoords}
+              destination={destinationCoords}
+            />
+          ) : (
+            <Text>Loading map...</Text>
+          )}
         </View>
-      )}
 
-      {/* Route error */}
-      {routeError && (
-        <View style={[styles.overlayBadge, styles.errorBadge]}>
-          <Text style={styles.overlayText}>{routeError}</Text>
+        <View style={styles.durationCard}>
+          <Text style={styles.durationLabel}>DURATION</Text>
+          <Text style={styles.duration}>{formatTime(elapsedTime)}</Text>
+          <Text style={styles.started}>Started at {startTime}</Text>
         </View>
-      )}
 
-      {/* Deviation warning */}
-      {deviationDetected && (
-        <View style={[styles.overlayBadge, styles.deviationBadge]}>
-          <Text style={styles.overlayText}>⚠️ Off Route — SOS Sent</Text>
+        <View style={styles.card}>
+          <Text style={styles.cardTitle}>Ride Details</Text>
+
+          <Text style={styles.label}>📍 Pickup</Text>
+          <Text style={styles.value}>{pickup}</Text>
+
+          <Text style={styles.label}>🏁 Destination</Text>
+          <Text style={styles.value}>{destination}</Text>
+
+          <Text style={styles.label}>🚘 Vehicle</Text>
+          <Text style={styles.vehicle}>{vehicleNumber}</Text>
         </View>
-      )}
-    </View>
+
+        <TouchableOpacity style={styles.sosBtn} onPress={handleSOS}>
+          <Text style={styles.sosText}>🚨 SOS EMERGENCY</Text>
+          <Text style={styles.sosSub}>Tap for immediate help</Text>
+        </TouchableOpacity>
+
+        <TouchableOpacity style={styles.endBtn} onPress={handleEndRide}>
+          <Text style={styles.endText}>✔ End Ride Safely</Text>
+        </TouchableOpacity>
+
+      </View>
+    </SafeAreaView>
   );
-};
-
-// ─────────────────────────────────────────────
-// Styles
-// ─────────────────────────────────────────────
-
+}
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-  },
-  map: {
-    flex: 1,
-  },
-  centered: {
-    flex: 1,
-    justifyContent: "center",
-    alignItems: "center",
-    backgroundColor: "#F5F5F5",
-  },
-  statusText: {
-    marginTop: 12,
-    fontSize: 14,
-    color: "#555",
-  },
-  overlayBadge: {
-    position: "absolute",
-    bottom: 24,
-    alignSelf: "center",
-    flexDirection: "row",
-    alignItems: "center",
-    backgroundColor: "rgba(0,0,0,0.65)",
-    paddingHorizontal: 16,
-    paddingVertical: 8,
-    borderRadius: 20,
-    gap: 8,
-  },
-  errorBadge: {
-    backgroundColor: "rgba(183,28,28,0.85)",
-  },
-  deviationBadge: {
-    backgroundColor: "rgba(183,28,28,0.92)",
-  },
-  overlayText: {
-    color: "#fff",
-    fontSize: 13,
-    fontWeight: "600",
-  },
-});
+  safe: { flex: 1, backgroundColor: "#f8f0f5" },
+  container: { flex: 1, padding: 16 },
 
-export default RideMapView;
+  status: { color: "green", fontWeight: "600" },
+  title: { fontSize: 24, fontWeight: "800", marginTop: 4 },
+  date: { color: "#888", marginBottom: 10 },
+
+  mapContainer: {
+    height: 200,
+    borderRadius: 15,
+    overflow: "hidden",
+    marginBottom: 12,
+  },
+
+  durationCard: {
+    backgroundColor: "#d81b60",
+    padding: 20,
+    borderRadius: 15,
+    alignItems: "center",
+    marginBottom: 12,
+  },
+  durationLabel: { color: "#fff", fontSize: 12 },
+  duration: { color: "#fff", fontSize: 32, fontWeight: "bold" },
+  started: { color: "#fff", fontSize: 12 },
+
+  card: {
+    backgroundColor: "#fff",
+    padding: 16,
+    borderRadius: 15,
+    marginBottom: 12,
+  },
+  cardTitle: { fontWeight: "700", marginBottom: 8 },
+
+  label: { color: "#888", marginTop: 6 },
+  value: { fontSize: 14 },
+  vehicle: { fontWeight: "bold", color: "#d81b60" },
+
+  sosBtn: {
+    backgroundColor: "#e53935",
+    padding: 18,
+    borderRadius: 15,
+    alignItems: "center",
+    marginBottom: 10,
+  },
+  sosText: { color: "#fff", fontWeight: "bold", fontSize: 16 },
+  sosSub: { color: "#fff", fontSize: 12 },
+
+  endBtn: {
+    borderWidth: 2,
+    borderColor: "#d81b60",
+    padding: 15,
+    borderRadius: 15,
+    alignItems: "center",
+  },
+  endText: { color: "#d81b60", fontWeight: "bold" },
+});
