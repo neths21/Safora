@@ -1,30 +1,25 @@
 // services/audioService.js
 
 import { Audio } from 'expo-av';
-import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
-import { storage } from '../firebaseConfig';
+import * as FileSystem from 'expo-file-system';
 
 let recording = null;
 
 // ─── START RECORDING ──────────────────────────────────────
 
-// Called automatically when SOS is triggered
 export const startRecording = async () => {
   try {
-    // Ask for microphone permission
     const { granted } = await Audio.requestPermissionsAsync();
     if (!granted) {
       console.log('Microphone permission denied');
       return false;
     }
 
-    // Set audio mode for recording
     await Audio.setAudioModeAsync({
       allowsRecordingIOS: true,
       playsInSilentModeIOS: true,
     });
 
-    // Start recording
     const { recording: newRecording } = await Audio.Recording.createAsync(
       Audio.RecordingOptionsPresets.HIGH_QUALITY
     );
@@ -40,8 +35,6 @@ export const startRecording = async () => {
 
 // ─── STOP RECORDING ───────────────────────────────────────
 
-// Called when emergency is resolved or ride ends
-// Returns the local file URI of the recording
 export const stopRecording = async (userId) => {
   try {
     if (!recording) {
@@ -50,18 +43,49 @@ export const stopRecording = async (userId) => {
     }
 
     await recording.stopAndUnloadAsync();
-    const uri = recording.getURI();
+    const tempUri = recording.getURI();
     recording = null;
 
-    console.log('Recording stopped. File saved at:', uri);
-    return uri;
+    // Move from cache to permanent storage
+    const fileName = `safora_emergency_${userId}_${Date.now()}.m4a`;
+    const permanentUri = FileSystem.documentDirectory + fileName;
+
+    await FileSystem.moveAsync({
+      from: tempUri,
+      to: permanentUri,
+    });
+
+    console.log('Recording permanently saved at:', permanentUri);
+    return permanentUri;
+
   } catch (error) {
     console.error('Error stopping recording:', error);
     throw error;
   }
 };
 
+// ─── LIST ALL RECORDINGS ──────────────────────────────────
+
+// Returns all saved emergency recordings for a user
+export const getRecordings = async (userId) => {
+  try {
+    const files = await FileSystem.readDirectoryAsync(
+      FileSystem.documentDirectory
+    );
+    const userRecordings = files.filter(
+      f => f.startsWith(`safora_emergency_${userId}`)
+    );
+    return userRecordings.map(f => ({
+      fileName: f,
+      uri: FileSystem.documentDirectory + f,
+      timestamp: f.split('_').pop().replace('.m4a', ''),
+    }));
+  } catch (error) {
+    console.error('Error listing recordings:', error);
+    return [];
+  }
+};
+
 // ─── HELPERS ──────────────────────────────────────────────
 
-// Check if recording is currently active
 export const isRecording = () => recording !== null;

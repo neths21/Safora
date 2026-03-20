@@ -2,7 +2,7 @@ import React from "react";
 import { StyleSheet, View, Text, ActivityIndicator } from "react-native";
 import { WebView } from "react-native-webview";
 
-const RideMapView = ({ pickup, destination }) => {
+const RideMapView = ({ pickup, destination, routeLine, currentLocation }) => {
   if (!pickup || !destination) {
     return (
       <View style={styles.center}>
@@ -11,6 +11,11 @@ const RideMapView = ({ pickup, destination }) => {
       </View>
     );
   }
+
+  const routeCoordsJS = JSON.stringify(routeLine || []);
+  const currentLocJS = currentLocation
+    ? `[${currentLocation.latitude}, ${currentLocation.longitude}]`
+    : null;
 
   const mapHTML = `
   <!DOCTYPE html>
@@ -30,28 +35,47 @@ const RideMapView = ({ pickup, destination }) => {
     <script>
       var map = L.map('map').setView([${pickup.latitude}, ${pickup.longitude}], 13);
 
-      L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-        attribution: '© OpenStreetMap'
-      }).addTo(map);
+      L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(map);
 
       // Pickup
-      L.marker([${pickup.latitude}, ${pickup.longitude}])
-        .addTo(map)
-        .bindPopup("Pickup");
+      L.marker([${pickup.latitude}, ${pickup.longitude}]).addTo(map);
 
       // Destination
-      L.marker([${destination.latitude}, ${destination.longitude}])
-        .addTo(map)
-        .bindPopup("Destination");
+      L.marker([${destination.latitude}, ${destination.longitude}]).addTo(map);
 
-      // Line between them
-      var latlngs = [
-        [${pickup.latitude}, ${pickup.longitude}],
-        [${destination.latitude}, ${destination.longitude}]
-      ];
+      // ✅ ROUTE (REAL ROAD PATH)
+      var route = ${routeCoordsJS};
 
-      L.polyline(latlngs, { color: '#d81b60', weight: 4 }).addTo(map);
+      if (route.length > 0) {
+        var latlngs = route.map(p => [p.latitude, p.longitude]);
 
+        var polyline = L.polyline(latlngs, {
+          color: '#d81b60',
+          weight: 5
+        }).addTo(map);
+
+        map.fitBounds(polyline.getBounds());
+      }
+
+      // ✅ USER LOCATION
+      var userMarker = null;
+
+      function updateLocation(lat, lng) {
+        if (userMarker) {
+          userMarker.setLatLng([lat, lng]);
+        } else {
+          userMarker = L.marker([lat, lng], {
+            icon: L.icon({
+              iconUrl: 'https://cdn-icons-png.flaticon.com/512/64/64113.png',
+              iconSize: [30, 30]
+            })
+          }).addTo(map);
+        }
+
+        map.panTo([lat, lng]);
+      }
+
+      ${currentLocJS ? `updateLocation(${currentLocJS});` : ''}
     </script>
 
   </body>

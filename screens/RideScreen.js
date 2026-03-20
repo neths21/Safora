@@ -1,11 +1,15 @@
 import React, { useState, useEffect, useRef } from 'react';
 import {
   View, Text, TouchableOpacity, StyleSheet,
-  SafeAreaView, Platform, Alert, Animated, ScrollView,
+  Alert, Animated, ScrollView, Platform,
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { startRide, stopRide } from '../services/rideService';
 import RideMapView from './RideMapView';
 import { geocodeAddress } from '../services/geocodingService';
+import { fetchRoute } from '../services/routeService';
+import { detectDeviation } from '../services/deviationService';
+import { getCurrentLocation } from '../services/locationService';
 
 export default function RideScreen({ navigation, route }) {
   const { pickup, destination, vehicleNumber, startTime, startDate, userId } = route.params;
@@ -13,8 +17,11 @@ export default function RideScreen({ navigation, route }) {
   const [rideStarted, setRideStarted] = useState(false);
   const [pickupCoords, setPickupCoords] = useState(null);
   const [destinationCoords, setDestinationCoords] = useState(null);
+  const [routeLine, setRouteLine] = useState([]);
+  const [currentLocation, setCurrentLocation] = useState(null);
   const pulseAnim = useRef(new Animated.Value(1)).current;
 
+  // ── Pulse animation ──────────────────────────────────────
   useEffect(() => {
     const pulse = Animated.loop(
       Animated.sequence([
@@ -26,15 +33,67 @@ export default function RideScreen({ navigation, route }) {
     return () => pulse.stop();
   }, []);
 
+  // ── Timer ────────────────────────────────────────────────
   useEffect(() => {
     const interval = setInterval(() => setElapsedTime((p) => p + 1), 1000);
     return () => clearInterval(interval);
   }, []);
 
+  // ── Start ride on mount ──────────────────────────────────
   useEffect(() => {
     handleStartRide();
+  }, []);
+
+  // ── Convert addresses + fetch route ─────────────────────
+  useEffect(() => {
+    const convertAddresses = async () => {
+      try {
+        const pickupC = await geocodeAddress(pickup);
+        const destC = await geocodeAddress(destination);
+        setPickupCoords(pickupC);
+        setDestinationCoords(destC);
+        const route = await fetchRoute(pickupC, destC);
+        setRouteLine(route);
+      } catch (e) {
+        console.error('Could not geocode addresses:', e.message);
+      }
+    };
     convertAddresses();
   }, []);
+
+  // ── Deviation detection every 4 seconds ─────────────────
+  useEffect(() => {
+    if (!routeLine || routeLine.length === 0) return;
+
+    const interval = setInterval(async () => {
+      try {
+        const location = await getCurrentLocation();
+        setCurrentLocation(location);
+        const result = await detectDeviation(userId, location, routeLine);
+        console.log('Deviation check:', result);
+        if (result.deviated) {
+          Alert.alert(
+            '⚠️ Route Deviation',
+            'You seem to be off route. Are you safe?',
+            [
+              { text: 'Yes, I am Safe', style: 'cancel' },
+              {
+                text: 'I Need Help',
+                style: 'destructive',
+                onPress: () => navigation.navigate('Emergency', {
+                  vehicleNumber, pickup, destination, userId,
+                }),
+              },
+            ]
+          );
+        }
+      } catch (error) {
+        console.error('Deviation error:', error.message);
+      }
+    }, 4000);
+
+    return () => clearInterval(interval);
+  }, [routeLine]);
 
   const handleStartRide = async () => {
     try {
@@ -44,17 +103,6 @@ export default function RideScreen({ navigation, route }) {
     } catch (error) {
       console.error('Error starting ride:', error.message);
       Alert.alert('Error', 'Could not start ride tracking. Your ride will continue without tracking.');
-    }
-  };
-
-  const convertAddresses = async () => {
-    try {
-      const pickupC = await geocodeAddress(pickup);
-      const destC = await geocodeAddress(destination);
-      setPickupCoords(pickupC);
-      setDestinationCoords(destC);
-    } catch (e) {
-      console.error('Could not geocode addresses:', e.message);
     }
   };
 
@@ -103,7 +151,12 @@ export default function RideScreen({ navigation, route }) {
 
         {pickupCoords && destinationCoords && (
           <View style={styles.mapContainer}>
-            <RideMapView pickup={pickupCoords} destination={destinationCoords} />
+            <RideMapView
+              pickup={pickupCoords}
+              destination={destinationCoords}
+              routeLine={routeLine}
+              currentLocation={currentLocation}
+            />
           </View>
         )}
 
@@ -183,9 +236,7 @@ const styles = StyleSheet.create({
   statusText: { fontSize: 12, fontWeight: '700', textTransform: 'uppercase' },
   headerTitle: { fontSize: 26, fontWeight: '800', color: '#3a1a2e' },
   headerDate: { fontSize: 13, color: '#a06080', marginTop: 2 },
-  mapContainer: {
-    height: 180, borderRadius: 15, overflow: 'hidden', marginBottom: 12,
-  },
+  mapContainer: { height: 180, borderRadius: 15, overflow: 'hidden', marginBottom: 12 },
   timerCard: {
     backgroundColor: '#c0136e', borderRadius: 18, paddingVertical: 22,
     alignItems: 'center', marginBottom: 16,
@@ -213,7 +264,7 @@ const styles = StyleSheet.create({
   sosBtn: {
     backgroundColor: '#d32f2f', borderRadius: 16, paddingVertical: 18, alignItems: 'center',
     shadowColor: '#d32f2f', shadowOpacity: 0.4, shadowRadius: 12,
-    shadowOffset: { width: 0, height: 5 }, elevation: 8,
+    shadowOffset: { width: 0, height: 5 }, elevation: 8, marginBottom: 14,
   },
   sosBtnIcon: { fontSize: 26, marginBottom: 2 },
   sosBtnText: { color: '#fff', fontSize: 18, fontWeight: '800', letterSpacing: 2 },
