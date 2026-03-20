@@ -10,6 +10,7 @@
   },
   "dependencies": {
     "expo": "^55.0.8",
+    "expo-av": "^16.0.8",
     "expo-constants": "~55.0.9",
     "expo-dev-client": "~55.0.18",
     "expo-haptics": "~55.0.9",
