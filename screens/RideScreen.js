@@ -1,25 +1,18 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from 'react';
 import {
-  View,
-  Text,
-  TouchableOpacity,
-  StyleSheet,
-  Alert,
-} from "react-native";
+  View, Text, TouchableOpacity, StyleSheet,
+  SafeAreaView, Platform, Alert, Animated, ScrollView,
+} from 'react-native';
 
-import { SafeAreaView } from "react-native-safe-area-context";
-
-import { startRide, stopRide } from "../services/rideService";
-import RideMapView from "./RideMapView";
-import { geocodeAddress } from "../services/geocodingService";
-
-import { fetchRoute } from "../services/routeService";
-import { detectDeviation } from "../services/deviationService";
-import { getCurrentLocation } from "../services/locationService";
+import { startRide, stopRide } from '../services/rideService';
+import RideMapView from './RideMapView';
+import { geocodeAddress } from '../services/geocodingService';
+import { fetchRoute } from '../services/routeService';
+import { detectDeviation } from '../services/deviationService';
+import { getCurrentLocation } from '../services/locationService';
 
 export default function RideScreen({ navigation, route }) {
-  const { pickup, destination, vehicleNumber, startTime, startDate, userId } =
-    route.params;
+  const { pickup, destination, vehicleNumber, startTime, startDate, userId } = route.params;
 
   const [elapsedTime, setElapsedTime] = useState(0);
   const [rideStarted, setRideStarted] = useState(false);
@@ -28,16 +21,25 @@ export default function RideScreen({ navigation, route }) {
   const [destinationCoords, setDestinationCoords] = useState(null);
 
   const [routeLine, setRouteLine] = useState([]);
-
-  // 🔥 THIS WAS MISSING (root cause of your error)
   const [currentLocation, setCurrentLocation] = useState(null);
+
+  const pulseAnim = useRef(new Animated.Value(1)).current;
+
+  // 💓 Animation
+  useEffect(() => {
+    const pulse = Animated.loop(
+      Animated.sequence([
+        Animated.timing(pulseAnim, { toValue: 1.06, duration: 700, useNativeDriver: true }),
+        Animated.timing(pulseAnim, { toValue: 1, duration: 700, useNativeDriver: true }),
+      ])
+    );
+    pulse.start();
+    return () => pulse.stop();
+  }, []);
 
   // ⏱ Timer
   useEffect(() => {
-    const interval = setInterval(() => {
-      setElapsedTime((prev) => prev + 1);
-    }, 1000);
-
+    const interval = setInterval(() => setElapsedTime((p) => p + 1), 1000);
     return () => clearInterval(interval);
   }, []);
 
@@ -51,11 +53,11 @@ export default function RideScreen({ navigation, route }) {
       await startRide(userId, destination);
       setRideStarted(true);
     } catch (error) {
-      Alert.alert("Error", "Ride failed to start");
+      Alert.alert('Error', 'Could not start ride');
     }
   };
 
-  // 📍 Convert addresses → coordinates + route
+  // 📍 Geocode + Route
   useEffect(() => {
     const convertAddresses = async () => {
       try {
@@ -69,39 +71,31 @@ export default function RideScreen({ navigation, route }) {
         setRouteLine(route);
 
       } catch (e) {
-        console.log(e);
-        Alert.alert("Error", "Could not find location");
+        console.error(e);
+        Alert.alert('Error', 'Could not find location');
       }
     };
 
     convertAddresses();
   }, []);
 
-  // 🚨 Deviation + live tracking
+  // 🚨 Live tracking + deviation detection
   useEffect(() => {
-    if (!routeLine || routeLine.length === 0) return;
+    if (!routeLine.length) return;
 
     const interval = setInterval(async () => {
       try {
         const location = await getCurrentLocation();
-
-        // ✅ FIXED — now state exists
         setCurrentLocation(location);
 
-        const result = await detectDeviation(
-          userId,
-          location,
-          routeLine
-        );
-
-        console.log("Deviation:", result);
+        const result = await detectDeviation(userId, location, routeLine);
 
         if (result.deviated) {
-          Alert.alert("⚠️ Off Route", "You are deviating!");
+          Alert.alert('⚠️ Off Route', 'You are deviating!');
         }
 
       } catch (error) {
-        console.log("Deviation error:", error);
+        console.log(error);
       }
     }, 4000);
 
@@ -109,14 +103,13 @@ export default function RideScreen({ navigation, route }) {
   }, [routeLine]);
 
   const handleEndRide = () => {
-    Alert.alert("End Ride", "Are you sure?", [
-      { text: "Cancel", style: "cancel" },
+    Alert.alert('End Ride', 'Are you sure?', [
+      { text: 'Cancel', style: 'cancel' },
       {
-        text: "End Ride",
+        text: 'End Ride',
         onPress: async () => {
           await stopRide(userId);
-
-          navigation.navigate("Completion", {
+          navigation.navigate('Completion', {
             pickup,
             destination,
             vehicleNumber,
@@ -128,107 +121,143 @@ export default function RideScreen({ navigation, route }) {
     ]);
   };
 
-  const handleSOS = () => {
-    navigation.navigate("Emergency", {
-      pickup,
-      destination,
-      vehicleNumber,
-      userId,
-    });
-  };
-
   const formatTime = (s) => {
-    const m = Math.floor(s / 60)
-      .toString()
-      .padStart(2, "0");
-    const sec = (s % 60).toString().padStart(2, "0");
+    const m = Math.floor(s / 60).toString().padStart(2, '0');
+    const sec = (s % 60).toString().padStart(2, '0');
     return `${m}:${sec}`;
   };
 
   return (
     <SafeAreaView style={styles.safe}>
-      <View style={styles.container}>
+      <ScrollView contentContainerStyle={styles.container} showsVerticalScrollIndicator={false}>
 
-        <Text style={styles.status}>🟢 RIDE IN PROGRESS</Text>
-        <Text style={styles.title}>🚗 Ride Tracker</Text>
-        <Text style={styles.date}>{startDate}</Text>
+        <View style={styles.header}>
+          <View style={styles.statusRow}>
+            <View style={[styles.statusDot, { backgroundColor: rideStarted ? '#4caf50' : '#ffa000' }]} />
+            <Text style={[styles.statusText, { color: rideStarted ? '#4caf50' : '#ffa000' }]}>
+              {rideStarted ? 'Ride In Progress' : 'Starting ride...'}
+            </Text>
+          </View>
+          <Text style={styles.headerTitle}>🚗 Ride Tracker</Text>
+          <Text style={styles.headerDate}>{startDate}</Text>
+        </View>
 
-        <View style={styles.mapContainer}>
-          {pickupCoords && destinationCoords ? (
+        {pickupCoords && destinationCoords && (
+          <View style={styles.mapContainer}>
             <RideMapView
               pickup={pickupCoords}
               destination={destinationCoords}
               routeLine={routeLine}
               currentLocation={currentLocation}
             />
-          ) : (
-            <Text>Loading map...</Text>
-          )}
+          </View>
+        )}
+
+        <View style={styles.timerCard}>
+          <Text style={styles.timerLabel}>Duration</Text>
+          <Text style={styles.timerValue}>{formatTime(elapsedTime)}</Text>
+          <Text style={styles.timerSub}>Started at {startTime}</Text>
         </View>
 
-        <View style={styles.durationCard}>
-          <Text style={styles.durationLabel}>DURATION</Text>
-          <Text style={styles.duration}>{formatTime(elapsedTime)}</Text>
-          <Text style={styles.started}>Started at {startTime}</Text>
-        </View>
-
-        <TouchableOpacity style={styles.sosBtn} onPress={handleSOS}>
-          <Text style={styles.sosText}>🚨 SOS EMERGENCY</Text>
-        </TouchableOpacity>
+        <Animated.View style={{ transform: [{ scale: pulseAnim }], marginBottom: 14 }}>
+          <TouchableOpacity
+            style={styles.sosBtn}
+            onPress={() => navigation.navigate('Emergency', {
+              vehicleNumber, pickup, destination, userId,
+            })}
+          >
+            <Text style={styles.sosBtnText}>🚨 SOS EMERGENCY</Text>
+          </TouchableOpacity>
+        </Animated.View>
 
         <TouchableOpacity style={styles.endBtn} onPress={handleEndRide}>
-          <Text style={styles.endText}>✔ End Ride Safely</Text>
+          <Text style={styles.endBtnText}>✓ End Ride Safely</Text>
         </TouchableOpacity>
 
-      </View>
+      </ScrollView>
     </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
-  safe: { flex: 1, backgroundColor: "#f8f0f5" },
-  container: { flex: 1, padding: 16 },
+  safe: { flex: 1, backgroundColor: '#f9f0f5' },
 
-  status: { color: "green", fontWeight: "600" },
-  title: { fontSize: 24, fontWeight: "800", marginTop: 4 },
-  date: { color: "#888", marginBottom: 10 },
+  container: {
+    paddingHorizontal: 22,
+    paddingTop: Platform.OS === 'android' ? 48 : 20,
+    paddingBottom: 30
+  },
+
+  header: { marginBottom: 12 },
+
+  statusRow: { flexDirection: 'row', alignItems: 'center', marginBottom: 6 },
+
+  statusDot: { width: 9, height: 9, borderRadius: 5, marginRight: 8 },
+
+  statusText: { fontSize: 12, fontWeight: '700', textTransform: 'uppercase' },
+
+  headerTitle: { fontSize: 26, fontWeight: '800', color: '#3a1a2e' },
+
+  headerDate: { fontSize: 13, color: '#a06080', marginTop: 2 },
 
   mapContainer: {
-    height: 200,
+    height: 180,
     borderRadius: 15,
-    overflow: "hidden",
+    overflow: 'hidden',
     marginBottom: 12,
   },
 
-  durationCard: {
-    backgroundColor: "#d81b60",
-    padding: 20,
-    borderRadius: 15,
-    alignItems: "center",
-    marginBottom: 12,
+  timerCard: {
+    backgroundColor: '#c0136e',
+    borderRadius: 18,
+    paddingVertical: 22,
+    alignItems: 'center',
+    marginBottom: 16,
   },
 
-  durationLabel: { color: "#fff", fontSize: 12 },
-  duration: { color: "#fff", fontSize: 32, fontWeight: "bold" },
-  started: { color: "#fff", fontSize: 12 },
+  timerLabel: {
+    color: '#f8c0dc',
+    fontSize: 12,
+    fontWeight: '600',
+  },
+
+  timerValue: {
+    color: '#fff',
+    fontSize: 52,
+    fontWeight: '800',
+  },
+
+  timerSub: {
+    color: '#f8c0dc',
+    fontSize: 12,
+    marginTop: 4
+  },
 
   sosBtn: {
-    backgroundColor: "#e53935",
-    padding: 18,
-    borderRadius: 15,
-    alignItems: "center",
-    marginBottom: 10,
+    backgroundColor: '#d32f2f',
+    borderRadius: 16,
+    paddingVertical: 18,
+    alignItems: 'center',
   },
 
-  sosText: { color: "#fff", fontWeight: "bold" },
+  sosBtnText: {
+    color: '#fff',
+    fontSize: 18,
+    fontWeight: '800',
+  },
 
   endBtn: {
+    backgroundColor: '#fff',
+    borderRadius: 14,
+    paddingVertical: 15,
+    alignItems: 'center',
     borderWidth: 2,
-    borderColor: "#d81b60",
-    padding: 15,
-    borderRadius: 15,
-    alignItems: "center",
+    borderColor: '#e91e8c',
   },
 
-  endText: { color: "#d81b60", fontWeight: "bold" },
+  endBtnText: {
+    color: '#e91e8c',
+    fontSize: 16,
+    fontWeight: '700'
+  },
 });
