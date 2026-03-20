@@ -1,7 +1,7 @@
 // services/audioService.js
 
 import { Audio } from 'expo-av';
-import * as FileSystem from 'expo-file-system';
+import * as FileSystem from 'expo-file-system/legacy';
 
 let recording = null;
 
@@ -9,6 +9,16 @@ let recording = null;
 
 export const startRecording = async () => {
   try {
+    // Clean up any existing recording first
+    if (recording) {
+      try {
+        await recording.stopAndUnloadAsync();
+      } catch (e) {
+        // ignore cleanup errors
+      }
+      recording = null;
+    }
+
     const { granted } = await Audio.requestPermissionsAsync();
     if (!granted) {
       console.log('Microphone permission denied');
