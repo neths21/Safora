@@ -8,7 +8,7 @@ import { getRecordings } from '../services/audioService';
 import * as Sharing from 'expo-sharing';
 
 export default function CompletionScreen({ navigation, route }) {
-  const { pickup, destination, vehicleNumber, userId, duration } = route.params || {};
+  const { pickup, destination, vehicleNumber, userId, duration, rideId } = route.params || {};
 
   // useRef keeps the Animated.Value stable across re-renders.
   // Declaring it with `new Animated.Value(0)` in the component body (not in a ref)
@@ -40,7 +40,15 @@ export default function CompletionScreen({ navigation, route }) {
   const loadRecordings = async () => {
     try {
       const list = await getRecordings(userId || 'defaultUser');
-      setRecordings(list);
+
+      // Only show recordings that belong to THIS ride.
+      // If a recording has no rideId tag (older recordings), exclude it so
+      // it never bleeds into a fresh completion screen.
+      const thisRide = rideId
+        ? list.filter((r) => r.rideId === rideId)
+        : [];
+
+      setRecordings(thisRide);
     } catch (error) {
       console.error('Error loading recordings:', error.message);
     }

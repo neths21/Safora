@@ -30,19 +30,54 @@ const RideMapView = ({ pickup, destination, routeLine, currentLocation, isDeviat
     <link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css"/>
     <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
     <style>
-      * { box-sizing: border-box; }
-      html, body {
-  height: 100%;
-  margin: 0;
-  padding: 0;
-  overflow: hidden;
-}
+      * { box-sizing: border-box; margin: 0; padding: 0; }
 
-#map {
-  height: 100%;
-  width: 100%;
-  touch-action: pan-x pan-y; /* ✅ allow gestures */
-}
+      html, body {
+        height: 100%;
+        overflow: hidden;
+        background: #e8e0f0;
+      }
+
+      #map {
+        height: 100%;
+        width: 100%;
+        /*
+          touch-action: none lets Leaflet own ALL touch events inside the
+          WebView. The parent ScrollView never sees them because the WebView
+          boundary acts as a hard stop — as long as the WebView itself is
+          outside the ScrollView (handled in RideScreen.js).
+        */
+        touch-action: none;
+      }
+
+      /* ── Zoom buttons ── */
+      .zoom-controls {
+        position: absolute;
+        top: 10px;
+        right: 10px;
+        z-index: 1000;
+        display: flex;
+        flex-direction: column;
+        gap: 4px;
+      }
+      .zoom-btn {
+        width: 36px;
+        height: 36px;
+        background: rgba(255,255,255,0.95);
+        border: none;
+        border-radius: 8px;
+        font-size: 22px;
+        font-weight: 700;
+        color: #333;
+        box-shadow: 0 2px 6px rgba(0,0,0,0.22);
+        cursor: pointer;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        -webkit-tap-highlight-color: transparent;
+        user-select: none;
+      }
+      .zoom-btn:active { background: #eee; }
 
       /* Legend overlay */
       .map-legend {
@@ -69,27 +104,38 @@ const RideMapView = ({ pickup, destination, routeLine, currentLocation, isDeviat
   <body>
     <div id="map"></div>
 
-    <script>
+    <!-- Zoom buttons rendered over the map, inside the WebView -->
+    <div class="zoom-controls">
+      <button class="zoom-btn" id="zoomIn">+</button>
+      <button class="zoom-btn" id="zoomOut">−</button>
+    </div>
 
+    <script>
       var isDeviated = ${isDeviated ? 'true' : 'false'};
 
       var map = L.map('map', {
-  zoomControl: false,
-
-  // ✅ ENABLE PROPER ZOOM
-  scrollWheelZoom: true,
-  doubleClickZoom: true,
-  touchZoom: true,
-  boxZoom: true,
-  keyboard: true,
-
-  // ❌ REMOVE tap restriction (this was breaking zoom)
-  tap: true,
-}).setView([${pickup.latitude}, ${pickup.longitude}], 13);
+        zoomControl: false,      // we supply our own +/- buttons above
+        scrollWheelZoom: true,
+        doubleClickZoom: true,
+        touchZoom: true,         // pinch-to-zoom — works now that map is outside ScrollView
+        boxZoom: false,
+        keyboard: false,
+        tap: false,              // disable Leaflet's tap shim; native touch handles it
+      }).setView([${pickup.latitude}, ${pickup.longitude}], 13);
 
       L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
         attribution: ''
       }).addTo(map);
+
+      // ── Zoom button handlers ──────────────────────────────────────
+      document.getElementById('zoomIn').addEventListener('click', function(e) {
+        e.stopPropagation();
+        map.zoomIn();
+      });
+      document.getElementById('zoomOut').addEventListener('click', function(e) {
+        e.stopPropagation();
+        map.zoomOut();
+      });
 
       // ── Custom icons ──────────────────────────────────────────────
       var pickupIcon = L.divIcon({
@@ -234,16 +280,26 @@ const RideMapView = ({ pickup, destination, routeLine, currentLocation, isDeviat
       <WebView
         source={{ html: mapHTML }}
         style={{ flex: 1 }}
-        // Do NOT set scrollEnabled={false} — it blocks map pan/zoom entirely.
-        // Instead we handle this via CSS touch-action and JS stopPropagation inside the HTML.
+        /*
+          scrollEnabled={false} is correct here — it stops the WebView's
+          OWN scroll behaviour (there is none in a map). The map's pan/zoom
+          gestures are handled entirely inside the HTML by Leaflet, not by
+          the WebView scroll system.
+          Since the WebView now lives OUTSIDE the parent ScrollView
+          (see RideScreen.js), there is no gesture conflict at the RN layer.
+        */
         scrollEnabled={false}
         bounces={false}
         overScrollMode="never"
         nestedScrollEnabled={false}
         javaScriptEnabled={true}
-        // Prevent the WebView from participating in the parent ScrollView's gesture responder
-        onStartShouldSetResponder={() => true}
-        onMoveShouldSetResponder={() => true}
+        /*
+          Do NOT set onStartShouldSetResponder / onMoveShouldSetResponder —
+          those were returning true and claiming all gestures for the View,
+          which prevented Leaflet's own touch handlers from firing reliably
+          on Android. Removing them lets the WebView (and Leaflet inside it)
+          handle gestures natively.
+        */
       />
     </View>
   );

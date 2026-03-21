@@ -59,7 +59,6 @@ const DeviationModal = ({ visible, onSOS, onCancel }) => (
 );
 
 // ── Vibration pattern: urgent SOS-style ──────────────────────────
-// short-short-short-long  (pause in ms between each)
 const DEVIATION_VIBRATION = [0, 200, 100, 200, 100, 200, 300, 600];
 
 export default function RideScreen({ navigation, route }) {
@@ -120,7 +119,6 @@ export default function RideScreen({ navigation, route }) {
         const location = await getCurrentLocation();
         setCurrentLocation(location);
 
-        // If deviation is simulated, skip the real deviation check
         if (isDeviated) return;
 
         const result = await detectDeviation(userId, location, routeLine);
@@ -162,7 +160,6 @@ export default function RideScreen({ navigation, route }) {
   const handleSimulateDeviation = async () => {
     try {
       if (isDeviated) {
-        // Reset back to normal
         setIsDeviated(false);
         setDeviatedLocation(null);
         setShowDeviationModal(false);
@@ -171,7 +168,6 @@ export default function RideScreen({ navigation, route }) {
         return;
       }
 
-      // Get actual current location as base, or fall back to pickup
       let base = currentLocation;
       if (!base) {
         try {
@@ -186,7 +182,6 @@ export default function RideScreen({ navigation, route }) {
         return;
       }
 
-      // Offset the location to simulate going off-route (~1.5 km away)
       const fakeLocation = {
         latitude: base.latitude + 0.015,
         longitude: base.longitude + 0.015,
@@ -197,10 +192,8 @@ export default function RideScreen({ navigation, route }) {
 
       Animated.timing(deviateAnim, { toValue: 1, duration: 300, useNativeDriver: false }).start();
 
-      // Vibrate with urgent pattern
       Vibration.vibrate(DEVIATION_VIBRATION);
 
-      // Show the custom deviation modal
       setShowDeviationModal(true);
     } catch (err) {
       console.error('Simulate deviation error:', err.message);
@@ -219,7 +212,6 @@ export default function RideScreen({ navigation, route }) {
   const handleDeviationCancel = () => {
     Vibration.cancel();
     setShowDeviationModal(false);
-    // Keep the deviation visually active on the map but stop the alert
   };
 
   // ── Ride controls ─────────────────────────────────────────────
@@ -273,38 +265,45 @@ export default function RideScreen({ navigation, route }) {
 
   return (
     <SafeAreaView style={styles.safe}>
-      <ScrollView contentContainerStyle={styles.container} showsVerticalScrollIndicator={false}>
 
-        <View style={styles.header}>
-          <View style={styles.statusRow}>
-            <View style={[styles.statusDot, { backgroundColor: rideStarted ? '#4caf50' : '#ffa000' }]} />
-            <Text style={[styles.statusText, { color: rideStarted ? '#4caf50' : '#ffa000' }]}>
-              {rideStarted ? 'Ride In Progress' : 'Starting ride...'}
-            </Text>
-          </View>
-          <Text style={styles.headerTitle}>🚗  Ride Tracker</Text>
-          <Text style={styles.headerDate}>{startDate}</Text>
+      {/* ── Header — always on top ── */}
+      <View style={styles.header}>
+        <View style={styles.statusRow}>
+          <View style={[styles.statusDot, { backgroundColor: rideStarted ? '#4caf50' : '#ffa000' }]} />
+          <Text style={[styles.statusText, { color: rideStarted ? '#4caf50' : '#ffa000' }]}>
+            {rideStarted ? 'Ride In Progress' : 'Starting ride...'}
+          </Text>
         </View>
+        <Text style={styles.headerTitle}>🚗  Ride Tracker</Text>
+        <Text style={styles.headerDate}>{startDate}</Text>
+      </View>
 
-        {rideStarted && (
-          <View style={styles.voiceIndicator}>
-            <Text style={styles.voiceDot}>🎤</Text>
-            <Text style={styles.voiceText}>Listening for "Help" or "SOS"</Text>
-          </View>
-        )}
+      {rideStarted && (
+        <View style={styles.voiceIndicator}>
+          <Text style={styles.voiceDot}>🎤</Text>
+          <Text style={styles.voiceText}>Listening for "Help" or "SOS"</Text>
+        </View>
+      )}
 
-        {pickupCoords && destinationCoords && (
-          <View style={styles.mapContainer}>
-            <RideMapView
-              pickup={pickupCoords}
-              destination={destinationCoords}
-              routeLine={routeLine}
-              currentLocation={isDeviated ? deviatedLocation : currentLocation}
-              isDeviated={isDeviated}
-              deviatedLocation={deviatedLocation}
-            />
-          </View>
-        )}
+      {/* ── Map below header, outside ScrollView so zoom works freely ── */}
+      {pickupCoords && destinationCoords && (
+        <View style={styles.mapContainer}>
+          <RideMapView
+            pickup={pickupCoords}
+            destination={destinationCoords}
+            routeLine={routeLine}
+            currentLocation={isDeviated ? deviatedLocation : currentLocation}
+            isDeviated={isDeviated}
+            deviatedLocation={deviatedLocation}
+          />
+        </View>
+      )}
+
+      <ScrollView
+        contentContainerStyle={styles.container}
+        showsVerticalScrollIndicator={false}
+        scrollEnabled={true}
+      >
 
         {/* Deviation banner shown when simulated */}
         {isDeviated && (
@@ -534,8 +533,15 @@ const modalStyles = StyleSheet.create({
 // ── Screen Styles ─────────────────────────────────────────────────
 const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: '#f9f0f5' },
-  container: { paddingHorizontal: 22, paddingTop: Platform.OS === 'android' ? 48 : 20, paddingBottom: 30 },
-  header: { marginBottom: 12 },
+
+  // Map is now OUTSIDE the ScrollView — fixed height, no borderRadius clipping issues
+  mapContainer: {
+    height: 220,
+    // No borderRadius here — the WebView clips itself inside RideMapView
+  },
+
+  container: { paddingHorizontal: 22, paddingTop: 16, paddingBottom: 30 },
+  header: { paddingHorizontal: 22, paddingTop: Platform.OS === 'android' ? 12 : 8, marginBottom: 6 },
   statusRow: { flexDirection: 'row', alignItems: 'center', marginBottom: 6 },
   statusDot: { width: 9, height: 9, borderRadius: 5, marginRight: 8 },
   statusText: { fontSize: 12, fontWeight: '700', textTransform: 'uppercase' },
@@ -545,11 +551,11 @@ const styles = StyleSheet.create({
     flexDirection: 'row', alignItems: 'center',
     backgroundColor: '#f3e5f5', borderRadius: 10,
     paddingHorizontal: 12, paddingVertical: 8,
-    marginBottom: 12, borderWidth: 1, borderColor: '#e1bee7',
+    marginHorizontal: 22, marginBottom: 8,
+    borderWidth: 1, borderColor: '#e1bee7',
   },
   voiceDot: { fontSize: 14, marginRight: 8 },
   voiceText: { fontSize: 12, color: '#7b1fa2', fontWeight: '600' },
-  mapContainer: { height: 180, borderRadius: 15, overflow: 'hidden', marginBottom: 12 },
 
   // Deviation banner
   deviationBanner: {
