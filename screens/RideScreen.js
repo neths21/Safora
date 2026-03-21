@@ -1,7 +1,8 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from 'react';
 import {
   View, Text, TouchableOpacity, StyleSheet,
   Alert, Animated, ScrollView, Platform,
+  Modal, Vibration,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { startRide, stopRide } from '../services/rideService';
@@ -13,10 +14,56 @@ import { getCurrentLocation } from '../services/locationService';
 import { useVoiceTrigger } from '../hooks/useVoiceTrigger';
 import FakeCallModal from '../components/FakeCallModal';
 
-export default function RideScreen({ navigation, route }) {
-  const { pickup, destination, vehicleNumber, startTime, startDate, userId } =
-    route.params;
+// ── Deviation Alert Modal ─────────────────────────────────────────
+const DeviationModal = ({ visible, onSOS, onCancel }) => (
+  <Modal
+    transparent
+    animationType="fade"
+    visible={visible}
+    onRequestClose={onCancel}
+    statusBarTranslucent
+  >
+    <View style={modalStyles.overlay}>
+      <View style={modalStyles.card}>
+        {/* Icon */}
+        <View style={modalStyles.iconWrap}>
+          <Text style={modalStyles.iconEmoji}>⚠️</Text>
+        </View>
 
+        {/* Title */}
+        <Text style={modalStyles.title}>Route Deviation Detected!</Text>
+        <Text style={modalStyles.subtitle}>
+          You appear to be off your planned route.{'\n'}Are you okay?
+        </Text>
+
+        {/* Route legend */}
+        <View style={modalStyles.legendRow}>
+          <View style={[modalStyles.legendDot, { backgroundColor: '#43a047' }]} />
+          <Text style={modalStyles.legendText}>Planned Route</Text>
+          <View style={[modalStyles.legendDot, { backgroundColor: '#e53935', marginLeft: 16 }]} />
+          <Text style={modalStyles.legendText}>Deviated Path</Text>
+        </View>
+
+        {/* Buttons */}
+        <TouchableOpacity style={modalStyles.sosBtn} onPress={onSOS} activeOpacity={0.85}>
+          <Text style={modalStyles.sosBtnIcon}>🚨</Text>
+          <Text style={modalStyles.sosBtnText}>SOS — I Need Help</Text>
+        </TouchableOpacity>
+
+        <TouchableOpacity style={modalStyles.cancelBtn} onPress={onCancel} activeOpacity={0.85}>
+          <Text style={modalStyles.cancelBtnText}>✓  I'm Safe — Cancel</Text>
+        </TouchableOpacity>
+      </View>
+    </View>
+  </Modal>
+);
+
+// ── Vibration pattern: urgent SOS-style ──────────────────────────
+// short-short-short-long  (pause in ms between each)
+const DEVIATION_VIBRATION = [0, 200, 100, 200, 100, 200, 300, 600];
+
+export default function RideScreen({ navigation, route }) {
+  const { pickup, destination, vehicleNumber, startTime, startDate, userId } = route.params;
   const [elapsedTime, setElapsedTime] = useState(0);
   const [rideStarted, setRideStarted] = useState(false);
   const [pickupCoords, setPickupCoords] = useState(null);
@@ -24,7 +71,11 @@ export default function RideScreen({ navigation, route }) {
   const [routeLine, setRouteLine] = useState([]);
   const [currentLocation, setCurrentLocation] = useState(null);
   const [showFakeCall, setShowFakeCall] = useState(false);
+  const [isDeviated, setIsDeviated] = useState(false);
+  const [deviatedLocation, setDeviatedLocation] = useState(null);
+  const [showDeviationModal, setShowDeviationModal] = useState(false);
   const pulseAnim = useRef(new Animated.Value(1)).current;
+  const deviateAnim = useRef(new Animated.Value(0)).current;
 
   useEffect(() => {
     const pulse = Animated.loop(
@@ -38,10 +89,7 @@ export default function RideScreen({ navigation, route }) {
   }, []);
 
   useEffect(() => {
-    const interval = setInterval(() => {
-      setElapsedTime((prev) => prev + 1);
-    }, 1000);
-
+    const interval = setInterval(() => setElapsedTime((p) => p + 1), 1000);
     return () => clearInterval(interval);
   }, []);
 
@@ -56,8 +104,8 @@ export default function RideScreen({ navigation, route }) {
         const destC = await geocodeAddress(destination);
         setPickupCoords(pickupC);
         setDestinationCoords(destC);
-        const route = await fetchRoute(pickupC, destC);
-        setRouteLine(route);
+        const fetchedRoute = await fetchRoute(pickupC, destC);
+        setRouteLine(fetchedRoute);
       } catch (e) {
         console.error('Could not geocode addresses:', e.message);
       }
@@ -71,6 +119,10 @@ export default function RideScreen({ navigation, route }) {
       try {
         const location = await getCurrentLocation();
         setCurrentLocation(location);
+
+        // If deviation is simulated, skip the real deviation check
+        if (isDeviated) return;
+
         const result = await detectDeviation(userId, location, routeLine);
         console.log('Deviation check:', result);
         if (result.deviated) {
@@ -94,7 +146,7 @@ export default function RideScreen({ navigation, route }) {
       }
     }, 4000);
     return () => clearInterval(interval);
-  }, [routeLine]);
+  }, [routeLine, isDeviated]);
 
   useVoiceTrigger(
     (transcript) => {
@@ -106,38 +158,88 @@ export default function RideScreen({ navigation, route }) {
     rideStarted
   );
 
+  // ── Simulate Deviation ────────────────────────────────────────
+  const handleSimulateDeviation = async () => {
+    try {
+      if (isDeviated) {
+        // Reset back to normal
+        setIsDeviated(false);
+        setDeviatedLocation(null);
+        setShowDeviationModal(false);
+        Vibration.cancel();
+        Animated.timing(deviateAnim, { toValue: 0, duration: 300, useNativeDriver: false }).start();
+        return;
+      }
+
+      // Get actual current location as base, or fall back to pickup
+      let base = currentLocation;
+      if (!base) {
+        try {
+          base = await getCurrentLocation();
+        } catch {
+          base = pickupCoords;
+        }
+      }
+
+      if (!base) {
+        Alert.alert('Not ready', 'Waiting for location data. Please try again shortly.');
+        return;
+      }
+
+      // Offset the location to simulate going off-route (~1.5 km away)
+      const fakeLocation = {
+        latitude: base.latitude + 0.015,
+        longitude: base.longitude + 0.015,
+      };
+
+      setDeviatedLocation(fakeLocation);
+      setIsDeviated(true);
+
+      Animated.timing(deviateAnim, { toValue: 1, duration: 300, useNativeDriver: false }).start();
+
+      // Vibrate with urgent pattern
+      Vibration.vibrate(DEVIATION_VIBRATION);
+
+      // Show the custom deviation modal
+      setShowDeviationModal(true);
+    } catch (err) {
+      console.error('Simulate deviation error:', err.message);
+    }
+  };
+
+  // ── Modal handlers ────────────────────────────────────────────
+  const handleDeviationSOS = () => {
+    Vibration.cancel();
+    setShowDeviationModal(false);
+    navigation.navigate('Emergency', {
+      vehicleNumber, pickup, destination, userId,
+    });
+  };
+
+  const handleDeviationCancel = () => {
+    Vibration.cancel();
+    setShowDeviationModal(false);
+    // Keep the deviation visually active on the map but stop the alert
+  };
+
+  // ── Ride controls ─────────────────────────────────────────────
   const handleStartRide = async () => {
     try {
       await startRide(userId, destination);
       setRideStarted(true);
       console.log('Ride started');
     } catch (error) {
-      Alert.alert("Error", "Ride failed to start");
+      console.error('Error starting ride:', error.message);
+      Alert.alert('Error', 'Could not start ride tracking. Your ride will continue without tracking.');
     }
   };
 
-  // 📍 Convert addresses → coordinates
-  useEffect(() => {
-    const convertAddresses = async () => {
-      try {
-        const pickupC = await geocodeAddress(pickup);
-        const destC = await geocodeAddress(destination);
-
-        setPickupCoords(pickupC);
-        setDestinationCoords(destC);
-      } catch (e) {
-        Alert.alert("Error", "Could not find location");
-      }
-    };
-
-    convertAddresses();
-  }, []);
-
   const handleEndRide = () => {
-    Alert.alert("End Ride", "Are you sure?", [
-      { text: "Cancel", style: "cancel" },
+    Alert.alert('End Ride', 'Are you sure you want to end this ride?', [
+      { text: 'Cancel', style: 'cancel' },
       {
-        text: "End Ride",
+        text: 'End Ride',
+        style: 'destructive',
         onPress: async () => {
           try {
             await stopRide(userId);
@@ -154,40 +256,34 @@ export default function RideScreen({ navigation, route }) {
     ]);
   };
 
-  const handleSOS = () => {
-    navigation.navigate("Emergency", {
-      pickup,
-      destination,
-      vehicleNumber,
-      userId,
-    });
-  };
-
   const formatTime = (s) => {
-    const m = Math.floor(s / 60)
-      .toString()
-      .padStart(2, "0");
-    const sec = (s % 60).toString().padStart(2, "0");
+    const m = Math.floor(s / 60).toString().padStart(2, '0');
+    const sec = (s % 60).toString().padStart(2, '0');
     return `${m}:${sec}`;
   };
+
+  const deviateBtnBg = deviateAnim.interpolate({
+    inputRange: [0, 1],
+    outputRange: ['#fff8e1', '#fbe9e7'],
+  });
+  const deviateBtnBorder = deviateAnim.interpolate({
+    inputRange: [0, 1],
+    outputRange: ['#f9a825', '#e53935'],
+  });
 
   return (
     <SafeAreaView style={styles.safe}>
       <ScrollView contentContainerStyle={styles.container} showsVerticalScrollIndicator={false}>
 
-        <Text style={styles.status}>🟢 RIDE IN PROGRESS</Text>
-        <Text style={styles.title}>🚗 Ride Tracker</Text>
-        <Text style={styles.date}>{startDate}</Text>
-
-        <View style={styles.mapContainer}>
-          {pickupCoords && destinationCoords ? (
-            <RideMapView
-              pickup={pickupCoords}
-              destination={destinationCoords}
-            />
-          ) : (
-            <Text>Loading map...</Text>
-          )}
+        <View style={styles.header}>
+          <View style={styles.statusRow}>
+            <View style={[styles.statusDot, { backgroundColor: rideStarted ? '#4caf50' : '#ffa000' }]} />
+            <Text style={[styles.statusText, { color: rideStarted ? '#4caf50' : '#ffa000' }]}>
+              {rideStarted ? 'Ride In Progress' : 'Starting ride...'}
+            </Text>
+          </View>
+          <Text style={styles.headerTitle}>🚗  Ride Tracker</Text>
+          <Text style={styles.headerDate}>{startDate}</Text>
         </View>
 
         {rideStarted && (
@@ -203,8 +299,23 @@ export default function RideScreen({ navigation, route }) {
               pickup={pickupCoords}
               destination={destinationCoords}
               routeLine={routeLine}
-              currentLocation={currentLocation}
+              currentLocation={isDeviated ? deviatedLocation : currentLocation}
+              isDeviated={isDeviated}
+              deviatedLocation={deviatedLocation}
             />
+          </View>
+        )}
+
+        {/* Deviation banner shown when simulated */}
+        {isDeviated && (
+          <View style={styles.deviationBanner}>
+            <Text style={styles.deviationBannerIcon}>⚠️</Text>
+            <View>
+              <Text style={styles.deviationBannerTitle}>Route Deviation Active</Text>
+              <Text style={styles.deviationBannerSub}>
+                <Text style={{ color: '#43a047', fontWeight: '700' }}>Green</Text> = Planned  ·  <Text style={{ color: '#e53935', fontWeight: '700' }}>Red</Text> = Deviated
+              </Text>
+            </View>
           </View>
         )}
 
@@ -214,18 +325,62 @@ export default function RideScreen({ navigation, route }) {
           <Text style={styles.timerSub}>Started at {startTime}</Text>
         </View>
 
-        <View style={styles.card}>
-          <Text style={styles.cardTitle}>Ride Details</Text>
+        <View style={styles.detailsCard}>
+          <Text style={styles.detailsTitle}>Ride Details</Text>
 
-          <Text style={styles.label}>📍 Pickup</Text>
-          <Text style={styles.value}>{pickup}</Text>
+          <View style={styles.detailRow}>
+            <View style={[styles.iconBox, { backgroundColor: '#e8f5e9' }]}>
+              <Text style={styles.icon}>📍</Text>
+            </View>
+            <View style={styles.detailText}>
+              <Text style={styles.detailLabel}>Pickup</Text>
+              <Text style={styles.detailValue}>{pickup}</Text>
+            </View>
+          </View>
 
-          <Text style={styles.label}>🏁 Destination</Text>
-          <Text style={styles.value}>{destination}</Text>
+          <View style={styles.connector} />
 
-          <Text style={styles.label}>🚘 Vehicle</Text>
-          <Text style={styles.vehicle}>{vehicleNumber}</Text>
+          <View style={styles.detailRow}>
+            <View style={[styles.iconBox, { backgroundColor: '#fce4ec' }]}>
+              <Text style={styles.icon}>🏁</Text>
+            </View>
+            <View style={styles.detailText}>
+              <Text style={styles.detailLabel}>Destination</Text>
+              <Text style={styles.detailValue}>{destination}</Text>
+            </View>
+          </View>
+
+          <View style={styles.divider} />
+
+          <View style={styles.detailRow}>
+            <View style={[styles.iconBox, { backgroundColor: '#e8eaf6' }]}>
+              <Text style={styles.icon}>🚘</Text>
+            </View>
+            <View style={styles.detailText}>
+              <Text style={styles.detailLabel}>Vehicle Number</Text>
+              <Text style={[styles.detailValue, styles.vehicleText]}>{vehicleNumber}</Text>
+            </View>
+          </View>
         </View>
+
+        {/* Simulate Deviation Button */}
+        <Animated.View style={[
+          styles.simulateDeviationBtn,
+          { backgroundColor: deviateBtnBg, borderColor: deviateBtnBorder },
+        ]}>
+          <TouchableOpacity onPress={handleSimulateDeviation} activeOpacity={0.82} style={styles.simulateBtnInner}>
+            <Text style={styles.simulateDeviationIcon}>{isDeviated ? '✅' : '🗺️'}</Text>
+            <View>
+              <Text style={[styles.simulateDeviationText, { color: isDeviated ? '#e53935' : '#f57f17' }]}>
+                {isDeviated ? 'Reset to Normal Route' : 'Simulate Deviation'}
+              </Text>
+              <Text style={styles.simulateDeviationSub}>
+                {isDeviated ? 'Tap to clear simulated deviation' : 'Test off-route detection on map'}
+              </Text>
+            </View>
+          </TouchableOpacity>
+        </Animated.View>
+
         <TouchableOpacity
           style={styles.fakeCallBtn}
           onPress={() => setShowFakeCall(true)}
@@ -233,6 +388,7 @@ export default function RideScreen({ navigation, route }) {
         >
           <Text style={styles.fakeCallBtnText}>📞  Fake Call</Text>
         </TouchableOpacity>
+
         <Animated.View style={{ transform: [{ scale: pulseAnim }], marginBottom: 14 }}>
           <TouchableOpacity
             style={styles.sosBtn}
@@ -252,6 +408,14 @@ export default function RideScreen({ navigation, route }) {
         </TouchableOpacity>
 
       </ScrollView>
+
+      {/* Deviation Alert Modal */}
+      <DeviationModal
+        visible={showDeviationModal}
+        onSOS={handleDeviationSOS}
+        onCancel={handleDeviationCancel}
+      />
+
       <FakeCallModal
         visible={showFakeCall}
         onAnswer={() => console.log('Fake call answered')}
@@ -260,6 +424,114 @@ export default function RideScreen({ navigation, route }) {
     </SafeAreaView>
   );
 }
+
+// ── Modal Styles ─────────────────────────────────────────────────
+const modalStyles = StyleSheet.create({
+  overlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.65)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingHorizontal: 24,
+  },
+  card: {
+    backgroundColor: '#fff',
+    borderRadius: 22,
+    padding: 28,
+    width: '100%',
+    alignItems: 'center',
+    shadowColor: '#000',
+    shadowOpacity: 0.25,
+    shadowRadius: 20,
+    shadowOffset: { width: 0, height: 8 },
+    elevation: 12,
+  },
+  iconWrap: {
+    width: 70,
+    height: 70,
+    borderRadius: 35,
+    backgroundColor: '#fff3e0',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginBottom: 16,
+    borderWidth: 2,
+    borderColor: '#ffb74d',
+  },
+  iconEmoji: { fontSize: 32 },
+  title: {
+    fontSize: 20,
+    fontWeight: '800',
+    color: '#b71c1c',
+    textAlign: 'center',
+    marginBottom: 8,
+  },
+  subtitle: {
+    fontSize: 14,
+    color: '#555',
+    textAlign: 'center',
+    lineHeight: 20,
+    marginBottom: 18,
+  },
+  legendRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#f5f5f5',
+    borderRadius: 10,
+    paddingVertical: 10,
+    paddingHorizontal: 16,
+    marginBottom: 22,
+    gap: 6,
+  },
+  legendDot: {
+    width: 12,
+    height: 12,
+    borderRadius: 6,
+  },
+  legendText: {
+    fontSize: 12,
+    color: '#444',
+    fontWeight: '600',
+  },
+  sosBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#d32f2f',
+    borderRadius: 14,
+    paddingVertical: 16,
+    width: '100%',
+    marginBottom: 12,
+    gap: 8,
+    shadowColor: '#d32f2f',
+    shadowOpacity: 0.35,
+    shadowRadius: 10,
+    shadowOffset: { width: 0, height: 4 },
+    elevation: 6,
+  },
+  sosBtnIcon: { fontSize: 20 },
+  sosBtnText: {
+    color: '#fff',
+    fontSize: 16,
+    fontWeight: '800',
+    letterSpacing: 1,
+  },
+  cancelBtn: {
+    borderRadius: 14,
+    paddingVertical: 14,
+    width: '100%',
+    alignItems: 'center',
+    backgroundColor: '#e8f5e9',
+    borderWidth: 1.5,
+    borderColor: '#43a047',
+  },
+  cancelBtnText: {
+    color: '#2e7d32',
+    fontSize: 15,
+    fontWeight: '700',
+  },
+});
+
+// ── Screen Styles ─────────────────────────────────────────────────
 const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: '#f9f0f5' },
   container: { paddingHorizontal: 22, paddingTop: Platform.OS === 'android' ? 48 : 20, paddingBottom: 30 },
@@ -278,6 +550,19 @@ const styles = StyleSheet.create({
   voiceDot: { fontSize: 14, marginRight: 8 },
   voiceText: { fontSize: 12, color: '#7b1fa2', fontWeight: '600' },
   mapContainer: { height: 180, borderRadius: 15, overflow: 'hidden', marginBottom: 12 },
+
+  // Deviation banner
+  deviationBanner: {
+    flexDirection: 'row', alignItems: 'center',
+    backgroundColor: '#fff3e0', borderRadius: 12,
+    paddingHorizontal: 14, paddingVertical: 10,
+    marginBottom: 12, borderWidth: 1.5, borderColor: '#ffb74d',
+    gap: 10,
+  },
+  deviationBannerIcon: { fontSize: 20 },
+  deviationBannerTitle: { fontSize: 13, fontWeight: '700', color: '#e65100' },
+  deviationBannerSub: { fontSize: 11, color: '#bf360c', marginTop: 2 },
+
   timerCard: {
     backgroundColor: '#c0136e', borderRadius: 18, paddingVertical: 22,
     alignItems: 'center', marginBottom: 16,
@@ -292,42 +577,47 @@ const styles = StyleSheet.create({
     shadowColor: '#c0136e', shadowOpacity: 0.06, shadowRadius: 12,
     shadowOffset: { width: 0, height: 4 }, elevation: 3,
   },
-  durationLabel: { color: "#fff", fontSize: 12 },
-  duration: { color: "#fff", fontSize: 32, fontWeight: "bold" },
-  started: { color: "#fff", fontSize: 12 },
+  detailsTitle: { fontSize: 15, fontWeight: '700', color: '#3a1a2e', marginBottom: 16 },
+  detailRow: { flexDirection: 'row', alignItems: 'center' },
+  iconBox: { width: 40, height: 40, borderRadius: 10, justifyContent: 'center', alignItems: 'center', marginRight: 14 },
+  icon: { fontSize: 18 },
+  detailText: { flex: 1 },
+  detailLabel: { fontSize: 11, color: '#a06080', fontWeight: '600', textTransform: 'uppercase' },
+  detailValue: { fontSize: 15, color: '#3a1a2e', fontWeight: '600', marginTop: 2 },
+  vehicleText: { letterSpacing: 2, color: '#c0136e', fontWeight: '800', fontSize: 16 },
+  connector: { width: 2, height: 14, backgroundColor: '#f0d0e4', marginLeft: 19, marginVertical: 4 },
+  divider: { borderTopWidth: 1, borderColor: '#f5e4ee', marginVertical: 14 },
 
-  card: {
-    backgroundColor: "#fff",
-    padding: 16,
-    borderRadius: 15,
-    marginBottom: 12,
+  // Simulate deviation button
+  simulateDeviationBtn: {
+    borderRadius: 14, borderWidth: 1.5,
+    marginBottom: 14, overflow: 'hidden',
   },
-  cardTitle: { fontWeight: "700", marginBottom: 8 },
-
-  label: { color: "#888", marginTop: 6 },
-  value: { fontSize: 14 },
-  vehicle: { fontWeight: "bold", color: "#d81b60" },
+  simulateBtnInner: {
+    flexDirection: 'row', alignItems: 'center',
+    paddingVertical: 13, paddingHorizontal: 16, gap: 12,
+  },
+  simulateDeviationIcon: { fontSize: 22 },
+  simulateDeviationText: { fontSize: 15, fontWeight: '700' },
+  simulateDeviationSub: { fontSize: 11, color: '#8d6e63', marginTop: 1 },
 
   sosBtn: {
     backgroundColor: '#d32f2f', borderRadius: 16, paddingVertical: 18, alignItems: 'center',
     shadowColor: '#d32f2f', shadowOpacity: 0.4, shadowRadius: 12,
     shadowOffset: { width: 0, height: 5 }, elevation: 8, marginBottom: 14,
   },
-  sosText: { color: "#fff", fontWeight: "bold", fontSize: 16 },
-  sosSub: { color: "#fff", fontSize: 12 },
-
+  sosBtnIcon: { fontSize: 26, marginBottom: 2 },
+  sosBtnText: { color: '#fff', fontSize: 18, fontWeight: '800', letterSpacing: 2 },
+  sosBtnSub: { color: '#ffcdd2', fontSize: 11, marginTop: 2 },
   endBtn: {
-    borderWidth: 2,
-    borderColor: "#d81b60",
-    padding: 15,
-    borderRadius: 15,
-    alignItems: "center",
+    backgroundColor: '#fff', borderRadius: 14, paddingVertical: 15,
+    alignItems: 'center', borderWidth: 2, borderColor: '#e91e8c',
   },
   endBtnText: { color: '#e91e8c', fontSize: 16, fontWeight: '700' },
   fakeCallBtn: {
-  backgroundColor: '#f9dfe9', borderRadius: 14, paddingVertical: 14,
-  alignItems: 'center', borderWidth: 1.5, borderColor: '#d80a9b',
-  marginBottom: 14,
-},
-fakeCallBtnText: { color: '#da39a2', fontSize: 15, fontWeight: '700' },
+    backgroundColor: '#f9dfe9', borderRadius: 14, paddingVertical: 14,
+    alignItems: 'center', borderWidth: 1.5, borderColor: '#d80a9b',
+    marginBottom: 14,
+  },
+  fakeCallBtnText: { color: '#da39a2', fontSize: 15, fontWeight: '700' },
 });
