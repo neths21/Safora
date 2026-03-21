@@ -1,13 +1,21 @@
 // services/audioService.js
 
 import { Audio } from 'expo-av';
-import * as FileSystem from 'expo-file-system/legacy';
+import { File, Directory, Paths } from 'expo-file-system/next';
 
 let recording = null;
+let _recordingLock = false; // guard against concurrent startRecording calls
 
 // ─── START RECORDING ──────────────────────────────────────
 
 export const startRecording = async () => {
+  // Guard against concurrent calls
+  if (_recordingLock) {
+    console.warn('startRecording called while another start is in progress');
+    return false;
+  }
+  _recordingLock = true;
+
   try {
     // Clean up any existing recording first
     if (recording) {
@@ -40,6 +48,8 @@ export const startRecording = async () => {
   } catch (error) {
     console.error('Error starting recording:', error);
     throw error;
+  } finally {
+    _recordingLock = false;
   }
 };
 
@@ -56,15 +66,20 @@ export const stopRecording = async (userId) => {
     const tempUri = recording.getURI();
     recording = null;
 
-    // Move from cache to permanent storage
+    if (!tempUri) {
+      console.error('Recording URI was null after stopping');
+      return null;
+    }
+
+    // Move from temp cache to permanent document storage using new File API.
+    // move() takes a single destination — pass a File (not Directory + name)
+    // to control the final filename.
     const fileName = `safora_emergency_${userId}_${Date.now()}.m4a`;
-    const permanentUri = FileSystem.documentDirectory + fileName;
+    const tempFile = new File(tempUri);
+    const destFile = new File(Paths.document, fileName);
+    tempFile.move(destFile);
 
-    await FileSystem.moveAsync({
-      from: tempUri,
-      to: permanentUri,
-    });
-
+    const permanentUri = destFile.uri;
     console.log('Recording permanently saved at:', permanentUri);
     return permanentUri;
 
@@ -79,17 +94,30 @@ export const stopRecording = async (userId) => {
 // Returns all saved emergency recordings for a user
 export const getRecordings = async (userId) => {
   try {
-    const files = await FileSystem.readDirectoryAsync(
-      FileSystem.documentDirectory
+    const prefix = `safora_emergency_${userId}_`;
+
+    // New Directory API: list() returns File/Directory instances
+    const docDir = new Directory(Paths.document);
+    const entries = docDir.list();
+
+    const userRecordings = entries.filter(
+      entry => entry instanceof File &&
+               entry.name.startsWith(prefix) &&
+               entry.name.endsWith('.m4a')
     );
-    const userRecordings = files.filter(
-      f => f.startsWith(`safora_emergency_${userId}`)
-    );
-    return userRecordings.map(f => ({
-      fileName: f,
-      uri: FileSystem.documentDirectory + f,
-      timestamp: f.split('_').pop().replace('.m4a', ''),
-    }));
+
+    return userRecordings.map(file => {
+      // Safely extract timestamp: safora_emergency_<userId>_<timestamp>.m4a
+      const withoutPrefix = file.name.slice(prefix.length);
+      const timestampStr = withoutPrefix.replace(/\.m4a$/, '');
+      const timestamp = parseInt(timestampStr, 10);
+
+      return {
+        fileName: file.name,
+        uri: file.uri,
+        timestamp: Number.isFinite(timestamp) ? timestamp : null,
+      };
+    });
   } catch (error) {
     console.error('Error listing recordings:', error);
     return [];

@@ -1,15 +1,20 @@
-import {
-  ExpoSpeechRecognitionModule,
-} from 'expo-speech-recognition';
+// services/voiceService.js
+
+import { ExpoSpeechRecognitionModule } from 'expo-speech-recognition';
 
 const TRIGGER_WORDS = ['help', 'sos', 'emergency', 'police', 'bachao', 'help me'];
 
+// All state is encapsulated — never export raw mutable variables
 let isListening = false;
 let isStarting = false;
 let onTriggerCallback = null;
 
+const LANGUAGES = ['en-US', 'en-GB', 'en'];
+
+// ─── START ────────────────────────────────────────────────
+
 export const startVoiceDetection = async (onTrigger) => {
-  if (isStarting) return;
+  if (isStarting) return false;
   isStarting = true;
   isListening = false;
 
@@ -17,15 +22,10 @@ export const startVoiceDetection = async (onTrigger) => {
     const { granted } = await ExpoSpeechRecognitionModule.requestPermissionsAsync();
     if (!granted) {
       console.log('Speech permission denied');
-      isStarting = false;
       return false;
     }
 
-    onTriggerCallback = onTrigger;
-
-    const languages = ['en-US', 'en-GB', 'en'];
-
-    for (const lang of languages) {
+    for (const lang of LANGUAGES) {
       try {
         await ExpoSpeechRecognitionModule.start({
           lang,
@@ -34,24 +34,29 @@ export const startVoiceDetection = async (onTrigger) => {
           requiresOnDeviceRecognition: false,
           addsPunctuation: false,
         });
+
+        // Only assign the callback after a successful start
+        onTriggerCallback = onTrigger;
         isListening = true;
-        isStarting = false;
         console.log('Voice detection started:', lang);
         return true;
       } catch (e) {
-        continue;
+        console.warn(`Voice detection failed for lang "${lang}":`, e.message);
       }
     }
 
-    isStarting = false;
+    console.error('Voice detection failed for all languages:', LANGUAGES);
     return false;
   } catch (error) {
     console.error('Voice start failed:', error.message);
-    isStarting = false;
     isListening = false;
     return false;
+  } finally {
+    isStarting = false;
   }
 };
+
+// ─── STOP ─────────────────────────────────────────────────
 
 export const stopVoiceDetection = async () => {
   isListening = false;
@@ -60,19 +65,33 @@ export const stopVoiceDetection = async () => {
   try {
     await ExpoSpeechRecognitionModule.stop();
   } catch (e) {
-    // ignore
+    // ignore — may already be stopped
   }
 };
 
-export const checkTranscript = (transcript) => {
+// ─── HANDLE TRANSCRIPT ────────────────────────────────────
+// Named to reflect that it both checks AND fires the callback (side effect).
+// Returns true if a trigger word was found.
+
+export const handleTranscript = (transcript) => {
   if (!transcript) return false;
+
   const lower = transcript.toLowerCase();
   const triggered = TRIGGER_WORDS.some(word => lower.includes(word));
-  if (triggered && onTriggerCallback) {
+
+  if (triggered) {
     console.log('Trigger word detected:', transcript);
-    onTriggerCallback(transcript);
+    if (onTriggerCallback) {
+      onTriggerCallback(transcript);
+    }
   }
+
   return triggered;
 };
+
+// Keep checkTranscript as a deprecated alias so existing callers don't break
+export const checkTranscript = handleTranscript;
+
+// ─── STATUS ───────────────────────────────────────────────
 
 export const isVoiceDetectionActive = () => isListening;
