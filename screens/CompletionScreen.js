@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   View, Text, TouchableOpacity, StyleSheet,
   SafeAreaView, Platform, Animated, Alert, ScrollView,
@@ -8,13 +8,8 @@ import { getRecordings } from '../services/audioService';
 import * as Sharing from 'expo-sharing';
 
 export default function CompletionScreen({ navigation, route }) {
-  const { pickup, destination, vehicleNumber, userId, duration, rideId } = route.params || {};
-
-  // useRef keeps the Animated.Value stable across re-renders.
-  // Declaring it with `new Animated.Value(0)` in the component body (not in a ref)
-  // would reset the animation every time the component re-renders.
-  const scaleAnim = useRef(new Animated.Value(0)).current;
-
+  const { pickup, destination, vehicleNumber, userId, duration } = route.params || {};
+  const scaleAnim = new Animated.Value(0);
   const [shared, setShared] = useState(false);
   const [recordings, setRecordings] = useState([]);
 
@@ -40,15 +35,7 @@ export default function CompletionScreen({ navigation, route }) {
   const loadRecordings = async () => {
     try {
       const list = await getRecordings(userId || 'defaultUser');
-
-      // Only show recordings that belong to THIS ride.
-      // If a recording has no rideId tag (older recordings), exclude it so
-      // it never bleeds into a fresh completion screen.
-      const thisRide = rideId
-        ? list.filter((r) => r.rideId === rideId)
-        : [];
-
-      setRecordings(thisRide);
+      setRecordings(list);
     } catch (error) {
       console.error('Error loading recordings:', error.message);
     }
@@ -69,15 +56,6 @@ export default function CompletionScreen({ navigation, route }) {
       console.error('Error sharing recording:', error.message);
       Alert.alert('Error', 'Could not share the recording.');
     }
-  };
-
-  // Formats a numeric ms-epoch timestamp to a locale time string.
-  // Returns a fallback string if timestamp is null or invalid.
-  const formatTimestamp = (timestamp) => {
-    if (!timestamp || !Number.isFinite(timestamp)) return 'Unknown time';
-    return new Date(timestamp).toLocaleTimeString([], {
-      hour: '2-digit', minute: '2-digit',
-    });
   };
 
   return (
@@ -132,14 +110,18 @@ export default function CompletionScreen({ navigation, route }) {
             </Text>
             {recordings.map((r, i) => (
               <TouchableOpacity
-                key={r.uri ?? i}
+                key={i}
                 style={styles.recordingRow}
                 onPress={() => handleShareRecording(r.uri)}
                 activeOpacity={0.85}
               >
                 <View style={styles.recordingInfo}>
                   <Text style={styles.recordingName}>Recording {i + 1}</Text>
-                  <Text style={styles.recordingTime}>{formatTimestamp(r.timestamp)}</Text>
+                  <Text style={styles.recordingTime}>
+                    {new Date(parseInt(r.timestamp)).toLocaleTimeString([], {
+                      hour: '2-digit', minute: '2-digit'
+                    })}
+                  </Text>
                 </View>
                 <View style={styles.shareTag}>
                   <Text style={styles.shareTagText}>Share</Text>
